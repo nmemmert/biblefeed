@@ -1,0 +1,14 @@
+# Works as a ZimaOS custom app (App Store → Custom Install → import this file),
+# or on any Docker host: `docker compose up -d --build`
+services:
+  biblefeed:
+    build: .
+    container_name: biblefeed
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Set to "true" once you serve it over HTTPS (Cloudflare Tunnel / Caddy).
+      COOKIE_SECURE: "false"
+    volumes:
+      - /DATA/AppData/biblefeed:/data
