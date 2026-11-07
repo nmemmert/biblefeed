@@ -98,5 +98,53 @@ export function makeFeed(db, bible, featuredFile, art, posts) {
     return items;
   }
 
-  return { page, featuredCount: featured.length };
+  const verseById = db.prepare('SELECT id, book, chapter, verse, text FROM verses WHERE id=?');
+  const itemById = db.prepare(
+    `SELECT i.*, o.name AS org_name FROM items i JOIN orgs o ON o.id=i.org_id WHERE i.id=? AND o.status='approved'`,
+  );
+  const cardOf = (r) => ({
+    id: `i:${r.id}`, type: r.type, org: r.org_name, title: r.title, excerpt: r.excerpt, image: r.image, url: r.url,
+    video_id: r.video_id, audio_url: r.audio_url, published_at: r.published_at,
+  });
+
+  /** Rebuild a card from its id (used by Saved). Returns null if it no longer exists / isn't allowed. */
+  function byId(id) {
+    if (typeof id !== 'string' || id.length > 120) return null;
+    if (id.startsWith('v:')) {
+      const v = verseById.get(+id.slice(2));
+      return v && { id, type: 'verse', ref: refLabel(v.book, v.chapter, v.verse), book: v.book, chapter: v.chapter, verse: v.verse, text: v.text };
+    }
+    if (id.startsWith('p:')) {
+      const r = bible.parseRef(id.slice(2).replace(/-(\d+)$/, ''));
+      const m = /-(\d+)$/.exec(id);
+      return r?.v1 ? passageCard({ ...r, v2: m ? +m[1] : r.v1 }) : null;
+    }
+    if (id.startsWith('a:') || id.startsWith('m:')) return art?.byId(id) ?? null;
+    if (id.startsWith('i:')) { const r = itemById.get(+id.slice(2)); return r ? cardOf(r) : null; }
+    return null;
+  }
+
+  /** Add per-user `saved` / `amen` flags to cards. */
+  function flag(userId, cards) {
+    const ids = cards.filter((c) => c.type !== 'post').map((c) => c.id);
+    if (!ids.length) return cards;
+    const rows = db.prepare(`SELECT item_id, kind FROM marks WHERE user_id=? AND item_id IN (${ids.map(() => '?').join(',')})`).all(userId, ...ids);
+    const m = new Map();
+    for (const r of rows) m.set(`${r.item_id}|${r.kind}`, true);
+    for (const c of cards) { c.saved = m.has(`${c.id}|saved`); c.amen = m.has(`${c.id}|amen`); }
+    return cards;
+  }
+
+  /** Deterministic verse of the day (same for everyone on a given date). */
+  function verseOfDay(dateStr) {
+    let n = 0;
+    for (const c of dateStr) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+    for (let i = 0; i < featured.length; i++) {
+      const card = passageCard(featured[(n + i) % featured.length]);
+      if (card) return card;
+    }
+    return null;
+  }
+
+  return { page, byId, flag, verseOfDay, featuredCount: featured.length };
 }

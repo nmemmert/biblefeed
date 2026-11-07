@@ -64,9 +64,9 @@ let cleanup = null;
 function route() {
   if (cleanup) { cleanup(); cleanup = null; }
   const [name = 'feed', ...args] = decodeURIComponent(location.hash.slice(1)).split('/');
-  const views = { feed: viewFeed, search: viewSearch, bible: viewBible, me: viewMe, orgs: viewOrgs, family: viewFamily, compose: viewCompose };
+  const views = { feed: viewFeed, search: viewSearch, bible: viewBible, me: viewMe, orgs: viewOrgs, family: viewFamily, compose: viewCompose, saved: viewSaved, users: viewUsers };
   const view = views[name] || viewFeed;
-  const tab = name === 'orgs' ? 'me' : name === 'search' ? 'feed' : views[name] ? name : 'feed';
+  const tab = ['orgs', 'saved', 'users'].includes(name) ? 'me' : name === 'search' ? 'feed' : views[name] ? name : 'feed';
   const content = h('div');
   const shell = h('div', { class: 'shell' }, content,
     h('nav', { class: 'tabbar' }, TABS.map(([id, ic, label]) =>
@@ -128,9 +128,8 @@ function verseCard(item) {
   const face = h('button', { class: 'verse', style: `background-image:${gradFor(item.id)}`, 'aria-label': `Open ${item.ref}`, onclick: open },
     h('p', { class: 'quote' }, quoted(item.text)),
     h('div', { class: 'ref' }, `${item.ref} · BSB`));
-  const amen = h('button', { onclick: (e) => { e.currentTarget.classList.toggle('on'); } }, '🙏 Amen');
   const share = h('button', { onclick: () => shareText(item.text, item.ref) }, '⤴ Share');
-  return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, amen, share, famBtn({ type: 'verse', ref: item.ref, text: item.text })));
+  return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, amenBtn(item), share, famBtn({ type: 'verse', ref: item.ref, text: item.text }), saveBtn(item)));
 }
 
 const ago = (ms) => {
@@ -150,6 +149,21 @@ function toFamily(attach) {
   sessionStorage.setItem('bf_attach', JSON.stringify(attach));
   location.hash = 'compose';
 }
+// Persisted Amen / Save toggles (state lives on the server per user).
+function toggleBtn(item, kind, label, onLabel) {
+  const b = h('button', {});
+  const paint = () => { b.textContent = item[kind] ? onLabel : label; b.classList.toggle('on', !!item[kind]); };
+  b.onclick = async () => {
+    const on = !item[kind];
+    item[kind] = on; paint();
+    try { await api('/api/marks', { id: item.id, kind, on }); }
+    catch (ex) { item[kind] = !on; paint(); toast(ex.message); }
+  };
+  paint();
+  return b;
+}
+const amenBtn = (item) => toggleBtn(item, 'amen', '🙏 Amen', '🙏 Amen');
+const saveBtn = (item) => toggleBtn(item, 'saved', '🔖 Save', '🔖 Saved');
 const famBtn = (attach) => h('button', { onclick: () => toFamily(attach) }, '👪 Family');
 
 function audioCard(item) {
@@ -157,7 +171,7 @@ function audioCard(item) {
   return h('article', { class: 'card' },
     h('div', { class: 'body' }, sourceLine(item), h('h2', {}, item.title), item.excerpt && h('p', {}, item.excerpt),
       player, h('a', { class: 'go', href: item.url, target: '_blank', rel: 'noopener noreferrer' }, `Listen on ${hostOf(item.url)} ›`)),
-    h('div', { class: 'actions' }, famBtn({ type: 'link', title: item.title, url: item.url, org: item.org })));
+    h('div', { class: 'actions' }, famBtn({ type: 'link', title: item.title, url: item.url, org: item.org }), saveBtn(item)));
 }
 
 function articleCard(item) {
@@ -167,7 +181,7 @@ function articleCard(item) {
       item.excerpt && h('p', {}, item.excerpt), h('span', { class: 'go' }, `Read on ${hostOf(item.url)} ›`)));
   return h('article', { class: 'card' }, link,
     h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share'),
-      famBtn({ type: 'link', title: item.title, url: item.url, org: item.org })));
+      famBtn({ type: 'link', title: item.title, url: item.url, org: item.org }), saveBtn(item)));
 }
 
 function videoCard(item) {
@@ -182,7 +196,7 @@ function videoCard(item) {
   return h('article', { class: 'card' }, box,
     h('div', { class: 'body pad' }, sourceLine(item), h('h2', {}, item.title)),
     h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share'),
-      famBtn({ type: 'link', title: item.title, url: item.url, org: item.org })));
+      famBtn({ type: 'link', title: item.title, url: item.url, org: item.org }), saveBtn(item)));
 }
 
 // Render art + verse to a PNG (client-side canvas) so it can be shared as an image.
@@ -226,10 +240,11 @@ function artCard(item) {
     h('img', { src: item.image, alt: item.credit ? `${item.credit.title}, ${item.credit.artist}` : '', loading: 'lazy' }),
     item.text && h('p', { class: 'quote' }, item.type === 'meme' ? item.text : quoted(item.text)),
     item.ref && h('div', { class: 'ref' }, `${item.ref} · BSB`));
-  const acts = [h('button', { onclick: (e) => e.currentTarget.classList.toggle('on') }, '🙏 Amen')];
+  const acts = [amenBtn(item)];
   if (item.ref) acts.push(h('button', { onclick: () => shareImage(item) }, '🖼 Share image'));
   else acts.push(h('button', { onclick: () => shareText(item.text || 'BibleFeed', '') }, '⤴ Share'));
   if (item.ref) acts.push(famBtn({ type: 'verse', ref: item.ref, text: item.text, image: item.image }));
+  acts.push(saveBtn(item));
   return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, acts));
 }
 
@@ -473,7 +488,11 @@ async function viewBible(root, [book, chapter, verse]) {
 async function viewMe(root) {
   const inviteBox = h('div');
   const page = h('div', { class: 'page' },
-    h('ul', { class: 'list' }, h('li', {}, h('button', {}, h('span', {}, me.name), h('span', { class: 'meta' }, me.email)))),
+    h('ul', { class: 'list' },
+      h('li', {}, h('button', {}, h('span', {}, me.name), h('span', { class: 'meta' }, me.email))),
+      h('li', {}, h('button', { onclick: () => (location.hash = 'saved') }, '🔖 Saved items', h('span', { class: 'meta' }, '›')))),
+    notifBox(),
+    passwordBox(),
     inviteBox,
     suggestForm(),
     creditsBox(),
@@ -492,12 +511,109 @@ async function viewMe(root) {
     }
     inviteBox.append(
       h('div', { class: 'sect' }, 'Admin'),
-      h('ul', { class: 'list' }, h('li', {}, h('button', { onclick: () => (location.hash = 'orgs') }, 'Organizations & sources', h('span', { class: 'meta' }, '›')))),
+      h('ul', { class: 'list' },
+        h('li', {}, h('button', { onclick: () => (location.hash = 'orgs') }, 'Organizations & sources', h('span', { class: 'meta' }, '›'))),
+        h('li', {}, h('button', { onclick: () => (location.hash = 'users') }, 'Family members', h('span', { class: 'meta' }, '›')))),
       h('div', { class: 'sect' }, 'Family invites'),
       h('button', { class: 'btn', onclick: async () => { await api('/api/invites', {}); load(); } }, 'New invite code'),
       h('div', { style: 'height:12px' }), codes);
     load();
   }
+}
+
+// ---------- saved ----------
+async function viewSaved(root) {
+  root.append(h('header', { class: 'topbar' }, h('button', { class: 'back', onclick: () => (location.hash = 'me') }, '‹ Me'), h('h1', {}, 'Saved')));
+  const { items } = await api('/api/saved');
+  root.append(h('div', { class: 'page' }, items.length ? items.map(cardFor) : h('div', { class: 'empty' }, 'Nothing saved yet. Tap 🔖 on any card.')));
+}
+
+// ---------- admin: family members ----------
+async function viewUsers(root) {
+  if (me.role !== 'admin') { location.hash = 'me'; return; }
+  const page = h('div', { class: 'page' });
+  root.append(h('header', { class: 'topbar' }, h('button', { class: 'back', onclick: () => (location.hash = 'me') }, '‹ Me'), h('h1', {}, 'Family members')), page);
+  const act = (fn) => async () => { try { await fn(); } catch (ex) { toast(ex.message); } load(); };
+  async function load() {
+    const { users } = await api('/api/users');
+    page.replaceChildren(...users.map((u) => h('div', { class: 'org' },
+      h('div', { class: 'row' }, h('b', {}, u.name), h('span', { class: 'meta' }, u.role === 'admin' ? ' · admin' : '')),
+      h('div', { class: 'meta' }, u.email), h('div', { class: 'meta' }, `${u.posts} posts · joined ${new Date(u.created_at).toLocaleDateString()}`),
+      u.id !== me.id && h('div', { class: 'btnrow' },
+        h('button', { onclick: act(() => api(`/api/users/${u.id}/role`, { role: u.role === 'admin' ? 'user' : 'admin' })) }, u.role === 'admin' ? 'Remove admin' : 'Make admin'),
+        h('button', { onclick: act(async () => {
+          if (!confirm(`Reset ${u.name}'s password? They will be signed out.`)) return;
+          const { password } = await api(`/api/users/${u.id}/reset`, {});
+          prompt(`Temporary password for ${u.name} (copy it and share it privately):`, password);
+        }) }, 'Reset password'),
+        h('button', { class: 'no', onclick: act(async () => {
+          if (!confirm(`Remove ${u.name} and all of their posts? This can’t be undone.`)) return;
+          await api(`/api/users/${u.id}`, undefined, 'DELETE');
+        }) }, 'Remove')))));
+  }
+  load();
+}
+
+// ---------- notifications & password (Me) ----------
+const b64 = (k) => { const p = '='.repeat((4 - (k.length % 4)) % 4); const r = atob((k + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+
+function notifBox() {
+  const box = h('div', {});
+  async function render() {
+    const { prefs, subscribed } = await api('/api/prefs');
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const status = h('div', { class: 'meta note' });
+    const save = async (patch) => { try { await api('/api/prefs', patch); } catch (ex) { toast(ex.message); } };
+    const check = (key, label) => h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: !!prefs[key], onchange: (e) => save({ [key]: e.target.checked }) }), label);
+    const hour = h('select', { 'aria-label': 'Daily verse time', onchange: (e) => save({ daily_hour: +e.target.value, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }) },
+      Array.from({ length: 18 }, (_, i) => i + 5).map((hr) => h('option', { value: hr, selected: hr === prefs.daily_hour },
+        `${((hr + 11) % 12) + 1}:00 ${hr < 12 ? 'AM' : 'PM'}`)));
+    const children = [h('div', { class: 'sect' }, 'Notifications')];
+    if (!supported) {
+      children.push(h('div', { class: 'note' }, ios
+        ? 'To get notifications on iPhone, add BibleFeed to your Home Screen (Share → Add to Home Screen), then open it from there.'
+        : 'This browser doesn’t support notifications.'));
+    } else if (!subscribed) {
+      children.push(h('button', { class: 'btn secondary', style: 'margin-top:0', onclick: async (e) => {
+        e.target.disabled = true;
+        try {
+          if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are blocked. Allow them in Settings → BibleFeed.');
+          const reg = await navigator.serviceWorker.ready;
+          const { key } = await api('/api/push/key');
+          const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
+          await api('/api/push/subscribe', sub.toJSON());
+          await api('/api/prefs', { tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+          render();
+        } catch (ex) { toast(ex.message || 'Couldn’t turn on notifications.'); e.target.disabled = false; }
+      } }, '🔔 Turn on notifications for this device'));
+    } else {
+      children.push(h('div', { class: 'org' }, check('push_replies', 'Replies to my posts'), check('push_prayers', 'New prayer requests'),
+        check('push_daily', 'Verse of the day at'), hour,
+        h('div', { class: 'btnrow' },
+          h('button', { onclick: async () => { try { await api('/api/push/test', {}); toast('Sent — check your notifications'); } catch (ex) { toast(ex.message); } } }, 'Send a test'),
+          h('button', { onclick: async () => {
+            const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription();
+            if (sub) { await api('/api/push/unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+            render();
+          } }, 'Turn off here'))));
+    }
+    box.replaceChildren(...children, status);
+  }
+  render().catch(() => {});
+  return box;
+}
+
+function passwordBox() {
+  const cur = h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Current password' });
+  const nxt = h('input', { type: 'password', autocomplete: 'new-password', placeholder: 'New password (8+ characters)' });
+  const msg = h('div', { class: 'err', role: 'status' });
+  return h('details', { class: 'credits', style: 'margin-top:14px' }, h('summary', {}, 'Change password'),
+    h('form', { onsubmit: async (e) => {
+      e.preventDefault(); msg.textContent = '';
+      try { await api('/api/me/password', { current: cur.value, next: nxt.value }); cur.value = nxt.value = ''; toast('Password changed'); }
+      catch (ex) { msg.textContent = ex.message; }
+    } }, h('label', { class: 'field' }, cur), h('label', { class: 'field' }, nxt), msg, h('button', { class: 'btn', type: 'submit' }, 'Change password')));
 }
 
 function creditsBox() {

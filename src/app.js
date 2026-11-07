@@ -10,6 +10,9 @@ import { makeArt } from './art.js';
 import { dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { makePosts, registerPosts } from './posts.js';
+import { registerMarks } from './marks.js';
+import { makePush, registerPush } from './push.js';
+import { registerUsers } from './users.js';
 import { registerOrgs } from './orgs.js';
 import { makeIngest, seedOrgs } from './ingest.js';
 
@@ -21,6 +24,8 @@ export async function buildApp({
   logger = false,
   ingest: ingestOpts = {},
   ingestEveryMin = 0,
+  pushOpts = {},
+  dailyPush = false,
 } = {}) {
   const db = openDb(dbPath);
   ensureBsb(db, `${root}data/bsb.txt`);
@@ -49,8 +54,17 @@ export async function buildApp({
   let running = null;
   ingest.runGuarded = () => (running ??= ingest.run().finally(() => { running = null; }));
   registerOrgs(app, db, ingest);
-  registerPosts(app, posts);
-  let timer;
+  const push = makePush(db, { send: pushOpts.send, featuredVerse: (d) => feed.verseOfDay(d) });
+  registerPosts(app, posts, push);
+  registerMarks(app, db, feed);
+  registerPush(app, push);
+  registerUsers(app, db, posts);
+  app.decorate('push', push);
+  let timer, pushTimer;
+  if (dailyPush) {
+    pushTimer = setInterval(() => push.dailyTick().catch((e) => app.log.error(e)), 10 * 60 * 1000);
+    pushTimer.unref();
+  }
   if (ingestEveryMin > 0) {
     const tick = () => ingest.runGuarded().then((r) => app.log.info({ ingest: r }, 'ingest done')).catch((e) => app.log.error(e));
     setTimeout(tick, 5000).unref();
@@ -62,7 +76,7 @@ export async function buildApp({
 
   app.get('/api/feed', { preHandler: app.requireUser }, async (req) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20);
-    return { items: feed.page(req.user.id, limit) };
+    return { items: feed.flag(req.user.id, feed.page(req.user.id, limit)) };
   });
 
   app.get('/api/books', { preHandler: app.requireUser }, async () => ({ books: bible.books }));
@@ -108,6 +122,7 @@ export async function buildApp({
   app.decorate('db', db);
   app.addHook('onClose', async () => {
     clearInterval(timer);
+    clearInterval(pushTimer);
     await running?.catch(() => {});
     db.close();
   });

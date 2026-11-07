@@ -22,6 +22,11 @@ The **Family** tab is a private feed for your invited users: reflections, prayer
 
 Audio (podcast) items are clearly marked **🎧 AUDIO** and play inline or link to the source; videos are marked **▶ VIDEO**.
 
+## Saved items, notifications, members
+- **🔖 Save** on any card keeps it under **Me → Saved items**; **🙏 Amen** is remembered per person.
+- **Notifications** (Me → Notifications): replies to your posts, new prayer requests, and an optional verse of the day at a time you choose. Uses standard Web Push; on iPhone it only works from the installed Home Screen app (iOS 16.4+) over HTTPS. Push keys are generated automatically and stored in the database. Set `VAPID_SUBJECT` (e.g. `mailto:you@example.com`) if you want a real contact in the push headers.
+- **Family members** (admin): make/remove admins, reset a forgotten password (gives you a one-time temporary password), or remove someone along with their posts. Everyone can change their own password under Me.
+
 ## Art & memes
 Art cards pair public-domain Gustave Doré Bible engravings (from Wikimedia Commons, credited under **Me → About → Art credits**) with a BSB verse. **Share image** renders the card to a PNG for the iPhone share sheet. Your own memes: drop public-domain/own images into `/DATA/AppData/biblefeed/memes/` (optional caption in a same-named `.txt`); they appear in the feed within a minute and require login to view.
 

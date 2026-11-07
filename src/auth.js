@@ -4,22 +4,22 @@ import { tx } from './db.js';
 
 const scryptAsync = promisify(scrypt);
 const SESSION_MS = 30 * 24 * 3600 * 1000;
-const COOKIE = 'bf_session';
+export const COOKIE = 'bf_session';
 
-async function hashPassword(pw) {
+export async function hashPassword(pw) {
   const salt = randomBytes(16);
   const key = await scryptAsync(pw, salt, 64);
   return `${salt.toString('hex')}:${key.toString('hex')}`;
 }
 
-async function verifyPassword(pw, stored) {
+export async function verifyPassword(pw, stored) {
   const [saltHex, keyHex] = stored.split(':');
   const key = await scryptAsync(pw, Buffer.from(saltHex, 'hex'), 64);
   const expected = Buffer.from(keyHex, 'hex');
   return key.length === expected.length && timingSafeEqual(key, expected);
 }
 
-const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+export const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
 function validCreds({ email, name, password }, needName = true) {
   if (typeof email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 200) return 'Enter a valid email.';

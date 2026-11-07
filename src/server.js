@@ -5,6 +5,7 @@ const app = await buildApp({
   // Set COOKIE_SECURE=true when served over HTTPS (Cloudflare Tunnel / Caddy) — recommended.
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   logger: true,
+  dailyPush: true,
   ingestEveryMin: Number(process.env.INGEST_EVERY_MIN ?? 90),
 });
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT) || 3000 });

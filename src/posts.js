@@ -70,6 +70,8 @@ export function makePosts(db, uploadsDir) {
 
   return {
     shape, uploadsDir, removeFile,
+    removeUserFiles(userId) { for (const r of db.prepare('SELECT image FROM posts WHERE user_id=? AND image IS NOT NULL').all(userId)) removeFile(r.image); },
+    authorOf: (id) => db.prepare('SELECT user_id FROM posts WHERE id=?').get(id)?.user_id ?? null,
     list: (userId, before) => q.page.all(userId, before ?? null).map(shape),
     get: (userId, id) => { const r = q.one.get(userId, id); return r ? shape(r) : null; },
     /** Family posts from the last 14 days this user hasn't seen, for the main feed. */
@@ -116,7 +118,7 @@ export function makePosts(db, uploadsDir) {
   };
 }
 
-export function registerPosts(app, posts) {
+export function registerPosts(app, posts, push) {
   const pre = { preHandler: app.requireUser };
   const bad = (reply, msg, code = 400) => reply.code(code).send({ error: msg });
 
@@ -136,7 +138,9 @@ export function registerPosts(app, posts) {
   app.post('/api/posts', pre, async (req, reply) => {
     const r = posts.create(req.user.id, req.body ?? {});
     if (r.error) return bad(reply, r.error);
-    return { post: posts.get(req.user.id, r.id) };
+    const post = posts.get(req.user.id, r.id);
+    if (post.kind === 'prayer') push?.notifyPrayer(req.user, post);
+    return { post };
   });
 
   app.delete('/api/posts/:id', pre, async (req, reply) => {
@@ -165,6 +169,7 @@ export function registerPosts(app, posts) {
     if (!body) return bad(reply, 'Write a reply first.');
     if (!posts.get(req.user.id, +req.params.id)) return bad(reply, 'Not found.', 404);
     posts.addComment(+req.params.id, req.user.id, body);
+    push?.notifyReply(req.user, posts.authorOf(+req.params.id), body);
     return { comments: posts.comments(+req.params.id) };
   });
 

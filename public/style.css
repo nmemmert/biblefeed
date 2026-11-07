@@ -165,3 +165,9 @@ textarea { width: 100%; padding: 13px 14px; font: 400 17px/1.5 var(--sans); bord
 .cphoto img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; }
 .cpreview .att p { margin: 4px 0 0; }
 [hidden] { display: none !important; }
+
+.toggle { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 16px; }
+.toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+.note { font-size: 14px; color: var(--muted); line-height: 1.45; margin: 4px 2px; }
+select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: inherit; margin: 0 0 6px 30px; }
+.actions button { font-size: 14px; padding: 10px 4px; }

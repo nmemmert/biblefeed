@@ -57,5 +57,6 @@ export function makeArt(db, bible, { artFile, memesDir }) {
     return out;
   }
 
-  return { pick, count: () => art.length + scanMemes().length, credits: art.map((a) => a.credit) };
+  const byId = (id) => [...art, ...scanMemes()].find((c) => c.id === id) ?? null;
+  return { pick, byId, count: () => art.length + scanMemes().length, credits: art.map((a) => a.credit) };
 }
