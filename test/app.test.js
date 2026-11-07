@@ -115,7 +115,7 @@ test('orgs: suggestion → approval gates the feed', async () => {
   assert.equal((await post('/api/orgs/suggest', { name: 'Grace Church', site: 'https://grace.example' }, member)).statusCode, 200);
   assert.equal((await get('/api/orgs', member)).statusCode, 403);
   const { orgs } = (await get('/api/orgs', admin)).json();
-  assert.equal(orgs.filter((o) => o.status === 'approved').length, 3); // seeded
+  assert.equal(orgs.filter((o) => o.status === 'approved').length, 7); // seeded
   const grace = orgs.find((o) => o.name === 'Grace Church');
   assert.equal(grace.status, 'pending');
   assert.equal((await post('/api/orgs/' + grace.id + '/sources', { kind: 'rss', url: 'javascript:1' }, admin)).statusCode, 400);
@@ -171,4 +171,20 @@ test('art cards carry credits and public-domain images exist', async () => {
   const kinds = new Set();
   for (let i = 0; i < 8; i++) for (const it of (await get('/api/feed?limit=16', member)).json().items) if (it.type === 'art') kinds.add(it.id);
   assert.ok(kinds.size > 0);
+});
+
+test('seeding is once-only per starter org', async () => {
+  const { openDb } = await import('../src/db.js');
+  const { seedOrgs } = await import('../src/ingest.js');
+  const db = openDb(':memory:');
+  // simulate an older install that only had two starters, then one was deleted
+  db.exec("CREATE TABLE seeded (name TEXT PRIMARY KEY); INSERT INTO seeded VALUES ('Truth For Life'), ('Living Waters'), ('Answers in Genesis')");
+  db.prepare("INSERT INTO orgs (name, status, created_at) VALUES ('Living Waters','blocked',1)").run();
+  seedOrgs(db);
+  const names = db.prepare('SELECT name, status FROM orgs ORDER BY name').all().map((r) => `${r.name}:${r.status}`);
+  assert.ok(names.includes('Living Waters:blocked'), 'blocked org stays blocked');
+  assert.ok(!names.some((n) => n.startsWith('Truth For Life')), 'deleted starter not re-added');
+  assert.ok(names.includes('The Pour Over:approved') && names.includes('Christianity Today:approved'));
+  seedOrgs(db);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM orgs').get().n, 5);
 });

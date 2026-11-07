@@ -26,7 +26,7 @@ export function plain(html, max = 240) {
 
 const ts = (d) => {
   const n = Date.parse(text(d));
-  return Number.isFinite(n) ? n : Date.now();
+  return Number.isFinite(n) ? Math.min(n, Date.now()) : Date.now(); // never future-dated
 };
 
 /** RSS 2.0 or Atom → normalized articles. */
@@ -158,14 +158,31 @@ export const SEED = [
     sources: [['youtube', 'UCsCyJ7xl8rQ10Cyz-fwJ5Xg']] },
   { name: 'Living Waters', site: 'https://www.livingwaters.com',
     sources: [['rss', 'https://www.livingwaters.com/feed/'], ['youtube', 'UCoZ0hhPz0fwZFlqpWmbUdqg']] },
+  { name: 'The Christian Post', site: 'https://www.christianpost.com',
+    sources: [['rss', 'https://www.christianpost.com/rss']] },
+  { name: 'Christianity Today', site: 'https://www.christianitytoday.com',
+    sources: [['rss', 'https://www.christianitytoday.com/feed/']] },
+  { name: 'The Christian Century', site: 'https://www.christiancentury.org',
+    sources: [['rss', 'https://www.christiancentury.org/rss.xml']] },
+  { name: 'The Pour Over', site: 'https://thepourover.org',
+    sources: [['rss', 'https://thepourover.org/feed/']] },
 ];
 
+/**
+ * Add starter organizations (pre-approved). Each is seeded once, tracked in `seeded`, so existing installs
+ * pick up newly added starters, but an org you later delete or block is never re-added or re-approved.
+ */
 export function seedOrgs(db) {
-  if (db.prepare('SELECT COUNT(*) AS n FROM orgs').get().n > 0) return;
+  db.exec('CREATE TABLE IF NOT EXISTS seeded (name TEXT PRIMARY KEY)');
+  const done = db.prepare('SELECT 1 FROM seeded WHERE name=?');
+  const mark = db.prepare('INSERT OR IGNORE INTO seeded (name) VALUES (?)');
+  const byName = db.prepare('SELECT id FROM orgs WHERE name=?');
   const o = db.prepare("INSERT INTO orgs (name, site, status, created_at) VALUES (?,?, 'approved', ?)");
-  const s = db.prepare('INSERT INTO sources (org_id, kind, url) VALUES (?,?,?)');
+  const s = db.prepare('INSERT OR IGNORE INTO sources (org_id, kind, url) VALUES (?,?,?)');
   for (const org of SEED) {
-    const id = o.run(org.name, org.site, Date.now()).lastInsertRowid;
+    if (done.get(org.name)) continue;
+    const id = byName.get(org.name)?.id ?? o.run(org.name, org.site, Date.now()).lastInsertRowid;
     for (const [kind, url] of org.sources) s.run(id, kind, url);
+    mark.run(org.name);
   }
 }
