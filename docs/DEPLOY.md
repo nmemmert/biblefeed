@@ -49,7 +49,7 @@ Include the folder in your normal NAS backup/off-box copy — snapshots on the s
 **Restore:** stop the app, copy `backups/biblefeed-YYYY-MM-DD.db` over `biblefeed.db`, delete `biblefeed.db-wal` and `biblefeed.db-shm`, start the app.
 
 ## 6. Updating
-Option A: pull the new image and recreate the container. Option B: `git pull && docker compose up -d --build`. Data is untouched.
+Option A: pull the new image (x86-64/amd64 only) and recreate the container. Option B: `git pull && docker compose up -d --build`. Data is untouched.
 
 ## Settings (environment variables)
 | Variable | Default | |
