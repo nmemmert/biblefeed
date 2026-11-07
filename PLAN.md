@@ -26,6 +26,10 @@ Exact feed URLs to be verified in phase 2.
 - Admin adds a source by URL (starts `pending`); users can *suggest* sources into the same queue.
 - Optional per-source flag: hold items for manual review.
 
+## Sharing & posting
+- **Share out:** share button on every card using the Web Share API (link + text; image for verse/art cards). Public read-only links are off by default (private family app).
+- **Post in-app:** reflections, prayer requests, photos, and "share a card with comment". Auto-published, no pre-approval; admin can remove any post. Tables: `posts`, `reactions`, `comments`.
+
 ## Architecture
 - Fastify API + static PWA served by the same container; SQLite file on a mounted volume (`/DATA/AppData/biblefeed`).
 - In-process scheduler: ingest every 1–2 h, daily verse/art-card generation; de-dupe by URL.
@@ -40,7 +44,8 @@ Exact feed URLs to be verified in phase 2.
 3. **Admin:** approval page, suggestion queue, user/invite management.
 4. **Visuals:** public-domain art library, verse-on-image generator, `memes/` folder importer.
 5. **Per-user:** saved items, seen tracking, light personalization, push notifications (daily verse).
-6. **Ops:** backups of the SQLite volume, logging, health check, Cloudflare Tunnel setup guide.
+6. **Family posts:** users post reflections, prayer requests (own type) and photos; reactions (amen/pray) and replies; posts publish automatically; users delete their own, admin can delete any; photo upload with size/type limits and resize; optional reply push notifications.
+7. **Ops:** backups of the SQLite volume, logging, health check, Cloudflare Tunnel setup guide.
 
 ## Open items
 - Confirm the tunnel vs. domain route once the ZimaOS box's network is known.
