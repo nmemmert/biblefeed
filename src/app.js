@@ -6,6 +6,8 @@ import { openDb, ensureBsb } from './db.js';
 import { makeBible } from './bible.js';
 import { makeFeed } from './feed.js';
 import { registerAuth } from './auth.js';
+import { registerOrgs } from './orgs.js';
+import { makeIngest, seedOrgs } from './ingest.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -13,10 +15,13 @@ export async function buildApp({
   dbPath = `${root}data/biblefeed.db`,
   cookieSecure = false,
   logger = false,
+  ingest: ingestOpts = {},
+  ingestEveryMin = 0,
 } = {}) {
   const db = openDb(dbPath);
   ensureBsb(db, `${root}data/bsb.txt`);
   const bible = makeBible(db);
+  seedOrgs(db);
   const feed = makeFeed(db, bible, `${root}data/featured.json`);
 
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 64 * 1024 });
@@ -30,6 +35,18 @@ export async function buildApp({
   });
 
   registerAuth(app, db, { cookieSecure });
+
+  const ingest = makeIngest(db, { ...ingestOpts, log: (m) => app.log.info(m) });
+  let running = null;
+  ingest.runGuarded = () => (running ??= ingest.run().finally(() => { running = null; }));
+  registerOrgs(app, db, ingest);
+  let timer;
+  if (ingestEveryMin > 0) {
+    const tick = () => ingest.runGuarded().then((r) => app.log.info({ ingest: r }, 'ingest done')).catch((e) => app.log.error(e));
+    setTimeout(tick, 5000).unref();
+    timer = setInterval(tick, ingestEveryMin * 60 * 1000);
+    timer.unref();
+  }
 
   app.get('/healthz', async () => ({ ok: true }));
 
@@ -63,6 +80,11 @@ export async function buildApp({
     },
   });
 
-  app.addHook('onClose', async () => db.close());
+  app.decorate('db', db);
+  app.addHook('onClose', async () => {
+    clearInterval(timer);
+    await running?.catch(() => {});
+    db.close();
+  });
   return app;
 }

@@ -32,6 +32,37 @@ CREATE TABLE IF NOT EXISTS verses (
   text TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS verses_ref ON verses (book, chapter, verse);
+CREATE TABLE IF NOT EXISTS orgs (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  site TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','blocked')),
+  suggested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sources (
+  id INTEGER PRIMARY KEY,
+  org_id INTEGER NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('rss','youtube','html')),
+  url TEXT NOT NULL,
+  last_run INTEGER,
+  last_error TEXT,
+  UNIQUE (org_id, url)
+);
+CREATE TABLE IF NOT EXISTS items (
+  id INTEGER PRIMARY KEY,
+  source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  org_id INTEGER NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('article','video')),
+  url TEXT NOT NULL UNIQUE,
+  video_id TEXT,
+  title TEXT NOT NULL,
+  excerpt TEXT,
+  image TEXT,
+  published_at INTEGER NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS items_org_type ON items (org_id, type, published_at DESC);
 CREATE TABLE IF NOT EXISTS seen (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   item_id TEXT NOT NULL,

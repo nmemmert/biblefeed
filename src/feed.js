@@ -50,18 +50,44 @@ export function makeFeed(db, bible, featuredFile) {
     return null; // pool effectively exhausted for this user
   }
 
-  /** Returns up to `limit` unseen cards and records them as seen. */
+  // Newest unseen items from *approved* orgs only; blocking an org hides its items immediately.
+  const unseenItems = db.prepare(
+    `SELECT i.*, o.name AS org_name FROM items i JOIN orgs o ON o.id = i.org_id
+     WHERE o.status = 'approved' AND i.type = ?
+       AND NOT EXISTS (SELECT 1 FROM seen s WHERE s.user_id = ? AND s.item_id = 'i:' || i.id)
+     ORDER BY i.published_at DESC LIMIT 40`,
+  );
+
+  function contentCards(userId, type, n) {
+    const pool = unseenItems.all(type, userId);
+    const picked = [];
+    while (picked.length < n && pool.length) picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    return picked.map((r) => ({
+      id: `i:${r.id}`, type: r.type, org: r.org_name, title: r.title, excerpt: r.excerpt,
+      image: r.image, url: r.url, video_id: r.video_id, published_at: r.published_at,
+    }));
+  }
+
+  /** Returns up to `limit` unseen cards (verses + approved-org articles/videos) and records them as seen. */
   function page(userId, limit) {
+    const per = Math.floor(limit / 4);
+    const extras = [...contentCards(userId, 'article', per), ...contentCards(userId, 'video', per)]
+      .sort(() => Math.random() - 0.5);
     const items = [];
     const ids = new Set();
-    for (let i = 0; i < limit; i++) {
+    for (let i = 0; i < limit - extras.length; i++) {
       const c = next(userId);
       if (!c || ids.has(c.id)) continue;
       ids.add(c.id);
       markSeen.run(userId, c.id, Date.now());
       items.push(c);
     }
-    if (!items.length) db.prepare('DELETE FROM seen WHERE user_id=?').run(userId); // start over
+    if (!items.length && !extras.length) db.prepare('DELETE FROM seen WHERE user_id=?').run(userId); // start over
+    // Sprinkle articles/videos between verses: positions 2, 5, 8, …
+    extras.forEach((c, k) => {
+      markSeen.run(userId, c.id, Date.now());
+      items.splice(Math.min(2 + 3 * k, items.length), 0, c);
+    });
     return items;
   }
 

@@ -61,9 +61,9 @@ let cleanup = null;
 function route() {
   if (cleanup) { cleanup(); cleanup = null; }
   const [name = 'feed', ...args] = decodeURIComponent(location.hash.slice(1)).split('/');
-  const views = { feed: viewFeed, search: viewSearch, bible: viewBible, me: viewMe };
+  const views = { feed: viewFeed, search: viewSearch, bible: viewBible, me: viewMe, orgs: viewOrgs };
   const view = views[name] || viewFeed;
-  const tab = views[name] ? name : 'feed';
+  const tab = name === 'orgs' ? 'me' : views[name] ? name : 'feed';
   const content = h('div');
   const shell = h('div', { class: 'shell' }, content,
     h('nav', { class: 'tabbar' }, TABS.map(([id, ic, label]) =>
@@ -130,6 +130,42 @@ function verseCard(item) {
   return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, amen, share));
 }
 
+const ago = (ms) => {
+  const d = Math.max(0, Date.now() - ms) / 36e5;
+  return d < 1 ? 'just now' : d < 24 ? `${Math.floor(d)}h ago` : d < 24 * 30 ? `${Math.floor(d / 24)}d ago` : new Date(ms).toLocaleDateString();
+};
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+
+function sourceLine(item) {
+  return h('div', { class: 'src' }, h('b', {}, item.org), h('span', { class: 'badge', title: 'Approved source' }, '✓'),
+    h('span', { class: 'when' }, ` · ${ago(item.published_at)}`));
+}
+
+function articleCard(item) {
+  const link = h('a', { class: 'media', href: item.url, target: '_blank', rel: 'noopener noreferrer' },
+    item.image && h('img', { src: item.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: (e) => e.target.remove() }),
+    h('div', { class: 'body' }, sourceLine(item), h('h2', {}, item.title),
+      item.excerpt && h('p', {}, item.excerpt), h('span', { class: 'go' }, `Read on ${hostOf(item.url)} ›`)));
+  return h('article', { class: 'card' }, link,
+    h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share')));
+}
+
+function videoCard(item) {
+  const box = h('div', { class: 'player' });
+  const play = h('button', { class: 'thumb', 'aria-label': `Play ${item.title}`, onclick: () => {
+    box.replaceChildren(h('iframe', {
+      src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(item.video_id)}?autoplay=1&playsinline=1&rel=0`,
+      allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
+      referrerpolicy: 'strict-origin-when-cross-origin', title: item.title }));
+  } }, item.image && h('img', { src: item.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }), h('span', { class: 'play' }, '▶'));
+  box.append(play);
+  return h('article', { class: 'card' }, box,
+    h('div', { class: 'body pad' }, sourceLine(item), h('h2', {}, item.title)),
+    h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share')));
+}
+
+const cardFor = (it) => (it.type === 'article' ? articleCard(it) : it.type === 'video' ? videoCard(it) : verseCard(it));
+
 function viewFeed(root) {
   const list = h('div', { class: 'page' });
   const sentinel = h('div', { class: 'sentinel' }, 'Loading…');
@@ -141,7 +177,7 @@ function viewFeed(root) {
     try {
       const { items } = await api('/api/feed?limit=8');
       if (!items.length) { done = true; sentinel.textContent = 'You’re all caught up 🙌'; }
-      else list.append(...items.map(verseCard));
+      else list.append(...items.map(cardFor));
       if (!done) sentinel.textContent = '';
     } catch (ex) { sentinel.textContent = ex.message; }
     loading = false;
@@ -237,6 +273,7 @@ async function viewMe(root) {
   const page = h('div', { class: 'page' },
     h('ul', { class: 'list' }, h('li', {}, h('button', {}, h('span', {}, me.name), h('span', { class: 'meta' }, me.email)))),
     inviteBox,
+    suggestForm(),
     h('button', { class: 'btn secondary', onclick: async () => { await api('/api/logout', {}); me = null; boot(); } }, 'Sign out'),
     h('p', { class: 'meta', style: 'text-align:center;margin-top:24px;color:var(--muted);font-size:13px' },
       'Scripture: Berean Standard Bible (public domain).'));
@@ -250,11 +287,75 @@ async function viewMe(root) {
         onclick: () => { navigator.clipboard?.writeText(i.code); toast('Code copied'); } },
         h('b', {}, i.code), h('span', { class: 'meta' }, i.used_by ? `used by ${i.used_by}` : 'tap to copy')))));
     }
-    inviteBox.append(h('div', { class: 'sect' }, 'Family invites'),
+    inviteBox.append(
+      h('div', { class: 'sect' }, 'Admin'),
+      h('ul', { class: 'list' }, h('li', {}, h('button', { onclick: () => (location.hash = 'orgs') }, 'Organizations & sources', h('span', { class: 'meta' }, '›')))),
+      h('div', { class: 'sect' }, 'Family invites'),
       h('button', { class: 'btn', onclick: async () => { await api('/api/invites', {}); load(); } }, 'New invite code'),
       h('div', { style: 'height:12px' }), codes);
     load();
   }
+}
+
+function suggestForm() {
+  const name = h('input', { type: 'text', placeholder: 'Organization name', maxlength: 80, required: true });
+  const site = h('input', { type: 'text', placeholder: 'Website (https://…)', inputmode: 'url', autocapitalize: 'off' });
+  const msg = h('div', { class: 'err', role: 'status' });
+  return h('div', {}, h('div', { class: 'sect' }, 'Suggest a source'),
+    h('form', { onsubmit: async (e) => {
+      e.preventDefault(); msg.textContent = '';
+      try { await api('/api/orgs/suggest', { name: name.value, site: site.value }); name.value = site.value = ''; toast('Sent for approval'); }
+      catch (ex) { msg.textContent = ex.message; }
+    } }, h('label', { class: 'field' }, name), h('label', { class: 'field' }, site), msg,
+    h('button', { class: 'btn secondary', type: 'submit', style: 'margin-top:0' }, 'Suggest')));
+}
+
+// ---------- admin: organizations ----------
+async function viewOrgs(root) {
+  if (me.role !== 'admin') { location.hash = 'me'; return; }
+  const page = h('div', { class: 'page' });
+  root.append(h('header', { class: 'topbar' }, h('button', { class: 'back', onclick: () => (location.hash = 'me') }, '‹ Me'), h('h1', {}, 'Organizations')), page);
+  const act = (fn) => async () => { try { await fn(); } catch (ex) { toast(ex.message); } load(); };
+  async function load() {
+    const { orgs } = await api('/api/orgs');
+    const order = ['pending', 'approved', 'blocked'];
+    const title = { pending: 'Waiting for approval', approved: 'Approved', blocked: 'Blocked' };
+    const sections = order.map((st) => {
+      const rows = orgs.filter((o) => o.status === st);
+      return [h('div', { class: 'sect' }, `${title[st]} (${rows.length})`),
+        ...rows.map((o) => h('div', { class: 'org' },
+          h('div', { class: 'row' }, h('b', {}, o.name),
+            o.suggested_by_name && st === 'pending' && h('span', { class: 'meta' }, ` · from ${o.suggested_by_name}`)),
+          o.site && h('div', { class: 'meta' }, o.site),
+          h('div', { class: 'meta' }, `${o.item_count} items`),
+          ...o.sources.map((s) => h('div', { class: 'srcrow' },
+            h('span', {}, `${s.kind}: ${s.url.replace(/^https?:\/\//, '').slice(0, 42)}`),
+            s.last_error && h('span', { class: 'bad' }, ` ⚠ ${s.last_error}`),
+            h('button', { class: 'x', 'aria-label': 'Remove source', onclick: act(() => fetch(`/api/sources/${s.id}`, { method: 'DELETE' })) }, '✕'))),
+          h('div', { class: 'btnrow' },
+            st !== 'approved' && h('button', { class: 'ok', onclick: act(() => api(`/api/orgs/${o.id}/status`, { status: 'approved' })) }, 'Approve'),
+            st !== 'blocked' && h('button', { class: 'no', onclick: act(() => api(`/api/orgs/${o.id}/status`, { status: 'blocked' })) }, 'Block'),
+            h('button', { onclick: () => addSource(o.id) }, '+ Feed'))))];
+    });
+    const addOrg = h('button', { class: 'btn secondary', onclick: async () => {
+      const name = prompt('Organization name'); if (!name) return;
+      const site = prompt('Website (https://…)', 'https://') || '';
+      act(() => api('/api/orgs', { name, site }))();
+    } }, '+ Add approved organization');
+    const run = h('button', { class: 'btn secondary', onclick: async (e) => {
+      e.target.disabled = true; e.target.textContent = 'Fetching…';
+      try { const { summary } = await api('/api/ingest/run', {}); toast(`Added ${summary.reduce((n, s) => n + (s.added || 0), 0)} items`); } catch (ex) { toast(ex.message); }
+      load();
+    } }, '↻ Fetch new content now');
+    page.replaceChildren(...sections.flat(), addOrg, run);
+  }
+  function addSource(orgId) {
+    const kind = prompt('Type: rss, youtube or html', 'rss'); if (!kind) return;
+    const hint = { rss: 'Feed URL', youtube: 'YouTube channel ID (UC…) or /channel/UC… link', html: 'Listing page URL' }[kind] || 'URL';
+    const url = prompt(hint); if (!url) return;
+    act(() => api(`/api/orgs/${orgId}/sources`, { kind, url }))();
+  }
+  load();
 }
 
 // ---------- boot ----------

@@ -79,3 +79,71 @@ test('bible lookups', async () => {
   assert.equal(kw.kind, 'results');
   assert.ok(kw.results.length > 0);
 });
+
+// ---------- phase 2 ----------
+import { parseFeed, parseArticlePage, listingLinks, makeIngest, plain } from '../src/ingest.js';
+
+const RSS = `<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+<item><title>Hello &amp; welcome</title><link>https://ex.org/a/</link><description>&lt;p&gt;Short &lt;b&gt;text&lt;/b&gt; &amp;amp; more&lt;/p&gt;</description>
+<content:encoded><![CDATA[<img src="/img/a.jpg"><p>Body</p>]]></content:encoded><pubDate>Mon, 02 Nov 2026 10:00:00 GMT</pubDate></item>
+<item><title>Bad link</title><link>javascript:alert(1)</link></item></channel></rss>`;
+const ATOM = `<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+<entry><yt:videoId>abcdefghijk</yt:videoId><title>A video</title><link rel="alternate" href="https://www.youtube.com/watch?v=abcdefghijk"/>
+<published>2026-11-01T10:00:00+00:00</published><media:group><media:thumbnail url="https://i.ytimg.com/vi/abcdefghijk/hq.jpg"/><media:description>Desc</media:description></media:group></entry></feed>`;
+const PAGE = `<html><head><meta property="og:title" content="Page &amp; Title"><meta content="An excerpt" property="og:description"><meta property="og:image" content="https://ex.org/og.jpg"></head></html>`;
+
+test('feed parsing', () => {
+  const rss = parseFeed(RSS);
+  assert.equal(rss.length, 1); // javascript: link rejected
+  assert.equal(rss[0].title, 'Hello & welcome');
+  assert.equal(rss[0].excerpt, 'Short text & more');
+  assert.equal(rss[0].image, 'https://ex.org/img/a.jpg');
+  const at = parseFeed(ATOM);
+  assert.equal(at[0].video_id, 'abcdefghijk');
+  assert.equal(at[0].image, 'https://i.ytimg.com/vi/abcdefghijk/hq.jpg');
+  const pg = parseArticlePage(PAGE, 'https://ex.org/x/y/z/');
+  assert.equal(pg.title, 'Page & Title');
+  assert.equal(pg.excerpt, 'An excerpt');
+  assert.equal(plain('<script>x()</script>Hi&nbsp;there &#8217;'), 'Hi there ’');
+  const links = listingLinks('<a href="/a/b/c/">1</a><a href="/a/b/">2</a><a href="https://other.com/a/b/c/">3</a><a href="/a/b/c.jpg">4</a>', 'https://ex.org/articles/');
+  assert.deepEqual(links, ['https://ex.org/a/b/c/']);
+});
+
+test('orgs: suggestion → approval gates the feed', async () => {
+  // suggestions go to pending; admin only endpoints are protected
+  assert.equal((await post('/api/orgs/suggest', { name: 'Grace Church', site: 'https://grace.example' }, member)).statusCode, 200);
+  assert.equal((await get('/api/orgs', member)).statusCode, 403);
+  const { orgs } = (await get('/api/orgs', admin)).json();
+  assert.equal(orgs.filter((o) => o.status === 'approved').length, 3); // seeded
+  const grace = orgs.find((o) => o.name === 'Grace Church');
+  assert.equal(grace.status, 'pending');
+  assert.equal((await post('/api/orgs/' + grace.id + '/sources', { kind: 'rss', url: 'javascript:1' }, admin)).statusCode, 400);
+  assert.equal((await post('/api/orgs/' + grace.id + '/sources', { kind: 'rss', url: 'https://grace.example/feed' }, admin)).statusCode, 200);
+
+  // ingest with a fake network: pending org must NOT be fetched
+  const fetched = [];
+  const fake = async (url) => {
+    fetched.push(url);
+    if (url.includes('videos.xml')) return ATOM;
+    if (url.includes('grace.example')) return RSS;
+    return RSS;
+  };
+  const ing = makeIngest(app.db, { fetch: fake });
+  const sum = await ing.run();
+  assert.ok(sum.length > 0 && !fetched.some((u) => u.includes('grace.example')));
+
+  const approvedItems = () => app.db.prepare("SELECT COUNT(*) n FROM items i JOIN orgs o ON o.id=i.org_id WHERE o.status='approved'").get().n;
+  assert.ok(approvedItems() > 0);
+
+  // feed includes articles/videos from approved orgs
+  let kinds = new Set();
+  for (let i = 0; i < 6; i++) for (const it of (await get('/api/feed?limit=12', member)).json().items) kinds.add(it.type);
+  assert.ok(kinds.has('article') || kinds.has('video'));
+
+  // blocking every org hides all content immediately
+  for (const o of orgs) await post(`/api/orgs/${o.id}/status`, { status: 'blocked' }, admin);
+  for (let i = 0; i < 4; i++) {
+    const { items } = (await get('/api/feed?limit=12', member)).json();
+    assert.ok(items.every((it) => it.type === 'verse'), 'blocked orgs must not appear');
+  }
+});
