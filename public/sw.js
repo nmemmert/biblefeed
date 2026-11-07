@@ -1,5 +1,5 @@
 // App-shell cache. API calls are never cached (always live, per-user).
-const CACHE = 'biblefeed-v2';
+const CACHE = 'biblefeed-v3';
 const SHELL = ['/', '/style.css', '/app.js', '/manifest.webmanifest', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => {

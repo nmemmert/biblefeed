@@ -17,6 +17,9 @@ Articles and videos come only from organizations you approve (**Me → Organizat
 
 Feeds are fetched every 90 min (`INGEST_EVERY_MIN`, `0` disables) or on demand with **Fetch new content now**. Only titles, excerpts, images and links are stored; articles open on the original site, videos play in the official YouTube embed.
 
+## Art & memes
+Art cards pair public-domain Gustave Doré Bible engravings (from Wikimedia Commons, credited under **Me → About → Art credits**) with a BSB verse. **Share image** renders the card to a PNG for the iPhone share sheet. Your own memes: drop public-domain/own images into `/DATA/AppData/biblefeed/memes/` (optional caption in a same-named `.txt`); they appear in the feed within a minute and require login to view.
+
 ## iPhone install
 iOS requires **HTTPS** to install PWAs and (later) send push notifications. Easiest: a Cloudflare Tunnel to port 3000, then set `COOKIE_SECURE=true`. In Safari: Share → Add to Home Screen.
 

@@ -4,6 +4,9 @@ const $app = document.getElementById('app');
 let me = null;
 
 // ---------- helpers ----------
+// Wrap in curly quotes unless the verse already opens with one (BSB includes its own quotation marks).
+const quoted = (t) => (/^[“‘"]/.test(t) ? t : `“${t}”`);
+
 function h(tag, props = {}, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
@@ -34,7 +37,7 @@ function toast(msg) {
 }
 
 async function shareText(text, ref) {
-  const full = `“${text}”\n— ${ref} (BSB)`;
+  const full = `${quoted(text)}\n— ${ref} (BSB)`;
   try {
     if (navigator.share) { await navigator.share({ text: full }); return; }
     await navigator.clipboard.writeText(full);
@@ -123,7 +126,7 @@ function viewAuth(needsSetup) {
 function verseCard(item) {
   const open = () => (location.hash = `bible/${item.book}/${item.chapter}/${item.verse}`);
   const face = h('button', { class: 'verse', style: `background-image:${gradFor(item.id)}`, 'aria-label': `Open ${item.ref}`, onclick: open },
-    h('p', { class: 'quote' }, `“${item.text}”`),
+    h('p', { class: 'quote' }, quoted(item.text)),
     h('div', { class: 'ref' }, `${item.ref} · BSB`));
   const amen = h('button', { onclick: (e) => { e.currentTarget.classList.toggle('on'); } }, '🙏 Amen');
   const share = h('button', { onclick: () => shareText(item.text, item.ref) }, '⤴ Share');
@@ -164,7 +167,54 @@ function videoCard(item) {
     h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share')));
 }
 
-const cardFor = (it) => (it.type === 'article' ? articleCard(it) : it.type === 'video' ? videoCard(it) : verseCard(it));
+// Render art + verse to a PNG (client-side canvas) so it can be shared as an image.
+async function renderShareImage(item) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = item.image; });
+  const W = 1080, H = 1350;
+  const c = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const g = c.getContext('2d');
+  const k = Math.max(W / img.width, H / img.height);
+  g.drawImage(img, (W - img.width * k) / 2, (H - img.height * k) / 2, img.width * k, img.height * k);
+  const grad = g.createLinearGradient(0, H * 0.35, 0, H);
+  grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,.88)');
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#fff'; g.textBaseline = 'alphabetic';
+  const size = item.text.length > 220 ? 44 : item.text.length > 120 ? 52 : 62;
+  g.font = `${size}px Georgia, serif`;
+  const words = quoted(item.text).split(' ');
+  const lines = []; let line = '';
+  for (const w of words) { const t = line ? `${line} ${w}` : w; if (g.measureText(t).width > W - 160 && line) { lines.push(line); line = w; } else line = t; }
+  lines.push(line);
+  const lh = size * 1.35; let y = H - 150 - lines.length * lh;
+  for (const l of lines) { g.fillText(l, 80, y); y += lh; }
+  g.font = '600 36px -apple-system, system-ui, sans-serif'; g.fillStyle = 'rgba(255,255,255,.9)';
+  g.fillText(`${item.ref} · BSB`, 80, H - 70);
+  return new Promise((res) => c.toBlob(res, 'image/png'));
+}
+
+async function shareImage(item) {
+  try {
+    const blob = await renderShareImage(item);
+    const file = new File([blob], `${item.ref.replace(/[^\w]+/g, '-')}.png`, { type: 'image/png' });
+    if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+    const a = h('a', { href: URL.createObjectURL(blob), download: file.name }); a.click(); toast('Image saved');
+  } catch { /* cancelled */ }
+}
+
+function artCard(item) {
+  const long = item.text.length > 170;
+  const open = () => item.book && (location.hash = `bible/${item.book}/${item.chapter}/${item.verse}`);
+  const face = h('button', { class: 'verse art' + (long ? ' long' : ''), 'aria-label': item.ref ? `Open ${item.ref}` : 'Image', onclick: open },
+    h('img', { src: item.image, alt: item.credit ? `${item.credit.title}, ${item.credit.artist}` : '', loading: 'lazy' }),
+    item.text && h('p', { class: 'quote' }, item.type === 'meme' ? item.text : quoted(item.text)),
+    item.ref && h('div', { class: 'ref' }, `${item.ref} · BSB`));
+  const acts = [h('button', { onclick: (e) => e.currentTarget.classList.toggle('on') }, '🙏 Amen')];
+  if (item.ref) acts.push(h('button', { onclick: () => shareImage(item) }, '🖼 Share image'));
+  else acts.push(h('button', { onclick: () => shareText(item.text || 'BibleFeed', '') }, '⤴ Share'));
+  return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, acts));
+}
+
+const cardFor = (it) => it.type === 'art' || it.type === 'meme' ? artCard(it) : (it.type === 'article' ? articleCard(it) : it.type === 'video' ? videoCard(it) : verseCard(it));
 
 function viewFeed(root) {
   const list = h('div', { class: 'page' });
@@ -274,6 +324,7 @@ async function viewMe(root) {
     h('ul', { class: 'list' }, h('li', {}, h('button', {}, h('span', {}, me.name), h('span', { class: 'meta' }, me.email)))),
     inviteBox,
     suggestForm(),
+    creditsBox(),
     h('button', { class: 'btn secondary', onclick: async () => { await api('/api/logout', {}); me = null; boot(); } }, 'Sign out'),
     h('p', { class: 'meta', style: 'text-align:center;margin-top:24px;color:var(--muted);font-size:13px' },
       'Scripture: Berean Standard Bible (public domain).'));
@@ -295,6 +346,18 @@ async function viewMe(root) {
       h('div', { style: 'height:12px' }), codes);
     load();
   }
+}
+
+function creditsBox() {
+  const box = h('details', { class: 'credits' }, h('summary', {}, 'Art credits'));
+  box.addEventListener('toggle', async () => {
+    if (!box.open || box.dataset.loaded) return;
+    box.dataset.loaded = '1';
+    const { credits } = await api('/api/art/credits');
+    box.append(h('p', {}, 'Public-domain engravings by Gustave Doré (1832–1883), via Wikimedia Commons.'),
+      h('ul', {}, credits.map((c) => h('li', {}, h('a', { href: c.source, target: '_blank', rel: 'noopener noreferrer' }, c.title)))));
+  });
+  return h('div', {}, h('div', { class: 'sect' }, 'About'), box);
 }
 
 function suggestForm() {

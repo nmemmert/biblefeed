@@ -5,7 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src
 COPY public ./public
-COPY data/bsb.txt data/featured.json ./data/
+COPY data/bsb.txt data/featured.json data/art.json ./data/
 COPY scripts ./scripts
 RUN mkdir -p /data && chown node:node /data
 VOLUME /data

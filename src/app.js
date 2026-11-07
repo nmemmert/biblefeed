@@ -6,6 +6,9 @@ import { openDb, ensureBsb } from './db.js';
 import { makeBible } from './bible.js';
 import { makeFeed } from './feed.js';
 import { registerAuth } from './auth.js';
+import { makeArt } from './art.js';
+import { dirname } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { registerOrgs } from './orgs.js';
 import { makeIngest, seedOrgs } from './ingest.js';
 
@@ -22,7 +25,10 @@ export async function buildApp({
   ensureBsb(db, `${root}data/bsb.txt`);
   const bible = makeBible(db);
   seedOrgs(db);
-  const feed = makeFeed(db, bible, `${root}data/featured.json`);
+  const memesDir = process.env.MEMES_DIR || (dbPath === ':memory:' ? `${root}data/memes-test` : `${dirname(dbPath)}/memes`);
+  mkdirSync(memesDir, { recursive: true });
+  const art = makeArt(db, bible, { artFile: `${root}data/art.json`, memesDir });
+  const feed = makeFeed(db, bible, `${root}data/featured.json`, art);
 
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 64 * 1024 });
   await app.register(fastifyCookie);
@@ -72,6 +78,15 @@ export async function buildApp({
     if (!q.trim()) return reply.code(400).send({ error: 'Enter a search.' });
     return bible.search(q);
   });
+
+  // Admin-supplied memes (public-domain/own images dropped in the data volume's memes/ folder); login required.
+  await app.register(async (scope) => {
+    scope.addHook('onRequest', async (req, reply) => {
+      if (!req.user) return reply.code(401).send({ error: 'Please sign in.' });
+    });
+    await scope.register(fastifyStatic, { root: memesDir, prefix: '/memes/', decorateReply: false, maxAge: '1d' });
+  });
+  app.get('/api/art/credits', { preHandler: app.requireUser }, async () => ({ credits: art.credits }));
 
   await app.register(fastifyStatic, {
     root: `${root}public`,

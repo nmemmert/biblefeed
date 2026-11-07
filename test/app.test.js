@@ -57,8 +57,9 @@ test('feed returns verse cards without repeats', async () => {
     const { items } = (await get('/api/feed?limit=10', member)).json();
     assert.ok(items.length > 0);
     for (const it of items) {
-      assert.equal(it.type, 'verse');
+      assert.ok(['verse', 'art'].includes(it.type), it.type);
       assert.ok(it.text.length > 10 && it.ref);
+      if (it.type === 'art') assert.match(it.image, /^\/art\/[\w-]+\.jpg$/);
       assert.ok(!seen.has(it.id), `repeat ${it.id}`);
       seen.add(it.id);
     }
@@ -144,6 +145,30 @@ test('orgs: suggestion → approval gates the feed', async () => {
   for (const o of orgs) await post(`/api/orgs/${o.id}/status`, { status: 'blocked' }, admin);
   for (let i = 0; i < 4; i++) {
     const { items } = (await get('/api/feed?limit=12', member)).json();
-    assert.ok(items.every((it) => it.type === 'verse'), 'blocked orgs must not appear');
+    assert.ok(items.every((it) => ['verse', 'art', 'meme'].includes(it.type)), 'blocked orgs must not appear');
   }
+});
+
+test('art cards carry credits and public-domain images exist', async () => {
+  const { credits } = (await get('/api/art/credits', member)).json();
+  assert.ok(credits.length >= 25);
+  assert.ok(credits.every((c) => c.license === 'Public domain' && c.source.startsWith('https://commons.wikimedia.org/')));
+  const { readdirSync } = await import('node:fs');
+  assert.ok(readdirSync(new URL('../public/art/', import.meta.url)).length >= credits.length);
+  assert.equal((await get('/art/dove-ark.jpg')).statusCode, 200);
+  const { writeFileSync, mkdirSync, rmSync } = await import('node:fs');
+  const dir = new URL('../data/memes-test/', import.meta.url);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(new URL('t.png', dir), Buffer.from('89504e470d0a1a0a', 'hex'));
+  writeFileSync(new URL('t.txt', dir), 'Be still.\n');
+  try {
+    assert.equal((await get('/memes/t.png')).statusCode, 401); // memes need login
+    assert.equal((await get('/memes/t.png', member)).statusCode, 200);
+    const ids = new Set();
+    for (let i = 0; i < 6; i++) for (const it of (await get('/api/feed?limit=20', member)).json().items) if (it.type === 'meme') { ids.add(it.id); assert.equal(it.text, 'Be still.'); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  // every paired verse resolved
+  const kinds = new Set();
+  for (let i = 0; i < 8; i++) for (const it of (await get('/api/feed?limit=16', member)).json().items) if (it.type === 'art') kinds.add(it.id);
+  assert.ok(kinds.size > 0);
 });

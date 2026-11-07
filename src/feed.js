@@ -3,7 +3,7 @@ import { refLabel } from './bible.js';
 
 const MAX_TRIES = 25;
 
-export function makeFeed(db, bible, featuredFile) {
+export function makeFeed(db, bible, featuredFile, art) {
   const featured = JSON.parse(readFileSync(featuredFile, 'utf8'))
     .map((s) => bible.parseRef(s))
     .filter((r) => r && r.v1);
@@ -70,9 +70,12 @@ export function makeFeed(db, bible, featuredFile) {
 
   /** Returns up to `limit` unseen cards (verses + approved-org articles/videos) and records them as seen. */
   function page(userId, limit) {
-    const per = Math.floor(limit / 4);
-    const extras = [...contentCards(userId, 'article', per), ...contentCards(userId, 'video', per)]
-      .sort(() => Math.random() - 0.5);
+    // Mix per page of 8 ≈ 3 verses, 2 art/memes, 2 articles, 1 video (verses fill any gaps).
+    const extras = [
+      ...(art ? art.pick(userId, Math.round(limit * 0.25)) : []),
+      ...contentCards(userId, 'article', Math.round(limit * 0.2)),
+      ...contentCards(userId, 'video', Math.round(limit * 0.15)),
+    ].sort(() => Math.random() - 0.5);
     const items = [];
     const ids = new Set();
     for (let i = 0; i < limit - extras.length; i++) {
