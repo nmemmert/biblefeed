@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 const MAX_BYTES = 3 * 1024 * 1024;
-export const UA = 'Mozilla/5.0 (compatible; BibleFeed/0.1; family reader)';
+export const UA = 'Mozilla/5.0 (compatible; Manna/0.1; family reader)';
 
 export function safeHttpUrl(u, base) {
   if (!u || typeof u !== 'string') return null;

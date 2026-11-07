@@ -1,8 +1,8 @@
-# Deploying BibleFeed on ZimaOS
+# Deploying Manna on ZimaOS
 
 ## 1. Get it running
 **Option A — pull the prebuilt image (easiest).** The `docker` GitHub Action publishes
-`ghcr.io/nmemmert/biblefeed:latest` whenever `main` is updated (make the package *Public* once: GitHub → Packages → biblefeed → Package settings).
+`ghcr.io/nmemmert/manna:latest` whenever `main` is updated (make the package *Public* once: GitHub → Packages → manna → Package settings).
 In ZimaOS: **App Store → Custom Install → Import**, paste `docker-compose.yml`.
 
 **Option B — build on the box.** SSH in, then:
@@ -12,10 +12,18 @@ docker compose up -d --build
 ```
 Open `http://<zima-ip>:3000` → the first account you create is the admin.
 
+### Using Gitea instead of (or as well as) GitHub
+`.gitea/workflows/docker.yml` does the same job on a Gitea server with Actions enabled and an `act_runner` that can use Docker:
+tests, builds the x86-64 image, and from `main` / `v*` tags pushes it to **your Gitea's container registry**.
+1. Get the code onto Gitea (push a second remote, or set up a mirror): `git remote add gitea http://<gitea>/<you>/biblefeed.git && git push gitea main`.
+2. In that repo: **Settings → Actions → Secrets** → add `REGISTRY_TOKEN` (a Gitea access token with `write:package`).
+3. Push to `main` → the image appears under **Packages**. In `.env` set `MANNA_IMAGE=<gitea-host>/<you>/manna:latest`.
+4. If your Gitea is plain `http://` on the LAN, Docker must trust it as an *insecure registry* on both the runner host (to push) and the ZimaOS box (to pull) — add it to Docker's `daemon.json` (`"insecure-registries": ["<gitea-host>:3000"]`) and restart Docker. A Gitea behind HTTPS needs nothing.
+
 ## 2. HTTPS with a Cloudflare Tunnel (needed for iPhone install + notifications)
 You need a domain on Cloudflare (free plan is fine).
 1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel** (wording may differ slightly) → choose *Cloudflared* → copy the **token**.
-2. Add a **public hostname** (e.g. `bible.yourdomain.com`) with service **HTTP** → `biblefeed:3000`.
+2. Add a **public hostname** (e.g. `bible.yourdomain.com`) with service **HTTP** → `manna:3000`.
 3. On the Zima box create `.env` next to `docker-compose.yml`:
    ```
    TUNNEL_TOKEN=eyJ...your token...
@@ -35,7 +43,7 @@ Open the HTTPS address in **Safari → Share → Add to Home Screen**. Open it f
 Manage people under **Me → Family members** (reset a forgotten password, remove someone).
 
 ## 5. Backups
-Everything lives in the mounted folder (`/DATA/AppData/biblefeed`):
+Everything lives in the mounted folder (`/DATA/AppData/biblefeed` — the folder and `biblefeed.db` keep the app's original name on purpose, so renaming never touches your data):
 
 | Path | What |
 |---|---|
@@ -57,11 +65,11 @@ Option A: pull the new image (x86-64/amd64 only) and recreate the container. Opt
 | `COOKIE_SECURE` | `false` | set `true` behind HTTPS |
 | `INGEST_EVERY_MIN` | `90` | how often approved sources are fetched (`0` = off) |
 | `BACKUP_EVERY_HOURS` | `24` | `0` = off |
-| `VAPID_SUBJECT` | `mailto:admin@biblefeed.local` | contact in push headers |
+| `VAPID_SUBJECT` | `mailto:admin@manna.local` | contact in push headers |
 | `PORT` | `3000` | |
 
 ## Troubleshooting
-- **Health:** `curl http://<zima-ip>:3000/healthz` → `{"ok":true}`. Logs: `docker logs biblefeed`.
+- **Health:** `curl http://<zima-ip>:3000/healthz` → `{"ok":true}`. Logs: `docker logs manna`.
 - **No articles/videos yet:** the first fetch runs about 5 s after start; or **Me → Organizations & sources → Fetch new content now**. A red ⚠ next to a feed shows why it failed (some sites block automated readers; the app identifies itself honestly and doesn't try to evade that).
 - **Can't sign in over the tunnel:** make sure `COOKIE_SECURE=true` and you're using the `https://` address.
 - **Notifications button missing on iPhone:** you must open the app from the Home Screen icon, not Safari.

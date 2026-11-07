@@ -1,6 +1,6 @@
 # Builds the image and publishes it to GitHub Container Registry so ZimaOS can simply pull it.
 # Branch pushes (claude/**) only test and build; the image is published only from main / tags.
-# After the first run: GitHub → your profile → Packages → biblefeed → Package settings → set visibility to Public
+# After the first run: GitHub → your profile → Packages → manna → Package settings → set visibility to Public
 # (or add a registry login in ZimaOS).
 name: docker
 on:
@@ -33,5 +33,5 @@ jobs:
           platforms: linux/amd64
           push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/biblefeed:latest
-            ghcr.io/${{ github.repository_owner }}/biblefeed:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/manna:latest
+            ghcr.io/${{ github.repository_owner }}/manna:${{ github.sha }}

@@ -1,4 +1,4 @@
-# BibleFeed — Plan
+# Manna — Plan
 
 A family-focused, self-hosted iPhone PWA with an infinite-scroll feed of BSB verses, public-domain Bible art/memes, articles and videos from **admin-approved** Christian organizations. The feed fills itself automatically.
 

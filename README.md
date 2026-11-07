@@ -1,6 +1,6 @@
-# BibleFeed
+# Manna
 
-A self-hosted, family-friendly Bible feed that installs on an iPhone as a PWA. Currently: infinite verse feed (BSB), Bible reader, search, invite-only accounts. See [PLAN.md](PLAN.md) for the roadmap.
+Manna is a self-hosted, family-friendly Bible feed that installs on an iPhone as a PWA. Currently: infinite verse feed (BSB), Bible reader, search, invite-only accounts. See [PLAN.md](PLAN.md) for the roadmap.
 
 Scripture: Berean Standard Bible — public domain.
 

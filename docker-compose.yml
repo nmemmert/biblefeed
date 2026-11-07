@@ -1,4 +1,4 @@
-# BibleFeed — works as a ZimaOS custom app (App Store → Custom Install → import this file)
+# Manna — works as a ZimaOS custom app (App Store → Custom Install → import this file)
 # or on any Docker host:  docker compose up -d --build
 #
 # For iPhone install + notifications you need HTTPS. Easiest: a Cloudflare Tunnel.
@@ -6,11 +6,12 @@
 #   docker compose --profile tunnel up -d --build
 # (see docs/DEPLOY.md)
 services:
-  biblefeed:
+  manna:
     # Pulled from GitHub Container Registry (see .github/workflows/docker.yml); `--build` builds it locally instead.
-    image: ghcr.io/nmemmert/biblefeed:latest
+    # Override with MANNA_IMAGE in .env to use your Gitea registry image, e.g. gitea.lan:3000/you/manna:latest
+    image: ${MANNA_IMAGE:-ghcr.io/nmemmert/manna:latest}
     build: .
-    container_name: biblefeed
+    container_name: manna
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -18,7 +19,7 @@ services:
       # "true" once you reach the app over HTTPS (the tunnel does). Required for secure cookies.
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       # Optional contact in push headers, e.g. mailto:you@example.com
-      VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@biblefeed.local}"
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@manna.local}"
       INGEST_EVERY_MIN: "${INGEST_EVERY_MIN:-90}"
       BACKUP_EVERY_HOURS: "${BACKUP_EVERY_HOURS:-24}"
     volumes:
@@ -27,11 +28,11 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: biblefeed-tunnel
+    container_name: manna-tunnel
     restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"
     depends_on:
-      - biblefeed
+      - manna

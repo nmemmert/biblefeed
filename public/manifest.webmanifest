@@ -1,7 +1,7 @@
 {
-  "name": "BibleFeed",
-  "short_name": "BibleFeed",
-  "description": "A family Bible feed",
+  "name": "Manna",
+  "short_name": "Manna",
+  "description": "Daily bread for the family: Scripture, art, articles and prayer",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
