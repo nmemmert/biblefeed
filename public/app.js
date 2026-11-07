@@ -1,4 +1,4 @@
-// BibleFeed front end — vanilla ES modules, hash routing. All text goes through textContent (no innerHTML).
+// Manna front end — vanilla ES modules, hash routing. All text goes through textContent (no innerHTML).
 
 const $app = document.getElementById('app');
 let me = null;
@@ -114,7 +114,7 @@ function viewAuth(needsSetup) {
       mode === 'register' && field('Invite code', f.code),
       err, btn);
     root.replaceChildren(...[
-      h('h1', {}, 'BibleFeed'), h('p', { class: 'sub' }, titles[mode]), form,
+      h('h1', {}, 'Manna'), h('p', { class: 'sub' }, titles[mode]), form,
       !needsSetup && h('button', { class: 'link', onclick: () => { mode = mode === 'login' ? 'register' : 'login'; render(); } },
         mode === 'login' ? 'Have an invite code? Join' : 'Already have an account? Sign in')].filter(Boolean));
   }
@@ -242,7 +242,7 @@ function artCard(item) {
     item.ref && h('div', { class: 'ref' }, `${item.ref} · BSB`));
   const acts = [amenBtn(item)];
   if (item.ref) acts.push(h('button', { onclick: () => shareImage(item) }, '🖼 Share image'));
-  else acts.push(h('button', { onclick: () => shareText(item.text || 'BibleFeed', '') }, '⤴ Share'));
+  else acts.push(h('button', { onclick: () => shareText(item.text || 'Manna', '') }, '⤴ Share'));
   if (item.ref) acts.push(famBtn({ type: 'verse', ref: item.ref, text: item.text, image: item.image }));
   acts.push(saveBtn(item));
   return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, acts));
@@ -255,7 +255,7 @@ const cardFor = (it) => it.type === 'art' || it.type === 'meme' ? artCard(it)
 function viewFeed(root) {
   const list = h('div', { class: 'page' });
   const sentinel = h('div', { class: 'sentinel' }, 'Loading…');
-  root.append(h('header', { class: 'topbar' }, h('h1', {}, 'BibleFeed'),
+  root.append(h('header', { class: 'topbar' }, h('h1', {}, 'Manna'),
     h('button', { class: 'icon', 'aria-label': 'Search', onclick: () => (location.hash = 'search') }, '🔍')), list, sentinel);
   let loading = false, done = false;
   async function more() {
@@ -573,13 +573,13 @@ function notifBox() {
     const children = [h('div', { class: 'sect' }, 'Notifications')];
     if (!supported) {
       children.push(h('div', { class: 'note' }, ios
-        ? 'To get notifications on iPhone, add BibleFeed to your Home Screen (Share → Add to Home Screen), then open it from there.'
+        ? 'To get notifications on iPhone, add Manna to your Home Screen (Share → Add to Home Screen), then open it from there.'
         : 'This browser doesn’t support notifications.'));
     } else if (!subscribed) {
       children.push(h('button', { class: 'btn secondary', style: 'margin-top:0', onclick: async (e) => {
         e.target.disabled = true;
         try {
-          if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are blocked. Allow them in Settings → BibleFeed.');
+          if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are blocked. Allow them in Settings → Manna.');
           const reg = await navigator.serviceWorker.ready;
           const { key } = await api('/api/push/key');
           const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
@@ -708,7 +708,7 @@ async function boot() {
     if (!me) return viewAuth(r.needsSetup);
     route();
   } catch {
-    $app.replaceChildren(h('div', { class: 'auth' }, h('h1', {}, 'BibleFeed'), h('p', { class: 'sub' }, 'Can’t reach the server. Check your connection.'),
+    $app.replaceChildren(h('div', { class: 'auth' }, h('h1', {}, 'Manna'), h('p', { class: 'sub' }, 'Can’t reach the server. Check your connection.'),
       h('button', { class: 'btn', onclick: boot }, 'Retry')));
   }
 }

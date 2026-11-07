@@ -1,5 +1,5 @@
 // App-shell cache. API calls are never cached (always live, per-user).
-const CACHE = 'biblefeed-v6';
+const CACHE = 'manna-v7';
 const SHELL = ['/', '/style.css', '/app.js', '/manifest.webmanifest', '/icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -37,7 +37,7 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data.json(); } catch { /* plain text or empty */ }
-  e.waitUntil(self.registration.showNotification(d.title || 'BibleFeed', {
+  e.waitUntil(self.registration.showNotification(d.title || 'Manna', {
     body: d.body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: d.url || '/' },
   }));
 });

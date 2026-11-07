@@ -160,7 +160,7 @@ test('hardening: backups, health, CSP, protected static files', async () => {
   for (const path of ['/uploads/', '/uploads/%2e%2e/%2e%2e/package.json', '/uploads/..%2fpackage.json', '/memes/', '/memes/%2e%2e%2fpackage.json']) {
     const res = await get(path);
     assert.ok([401, 403, 404].includes(res.statusCode), `${path} -> ${res.statusCode}`);
-    assert.ok(!res.body.includes('"name": "biblefeed"'), `${path} leaked a file`);
+    assert.ok(!res.body.includes('"name": "manna"'), `${path} leaked a file`);
   }
 
   // admin-only backup; produces a valid, restorable SQLite snapshot and prunes to 7

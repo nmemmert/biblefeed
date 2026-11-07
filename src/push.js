@@ -18,7 +18,7 @@ export function makePush(db, { send, featuredVerse } = {}) {
     vapid = webpush.generateVAPIDKeys();
     db.prepare("INSERT INTO meta (key, value) VALUES ('vapid', ?)").run(JSON.stringify(vapid));
   }
-  const details = { subject: process.env.VAPID_SUBJECT || 'mailto:admin@biblefeed.local', publicKey: vapid.publicKey, privateKey: vapid.privateKey };
+  const details = { subject: process.env.VAPID_SUBJECT || 'mailto:admin@manna.local', publicKey: vapid.publicKey, privateKey: vapid.privateKey };
   const sendOne = send ?? ((sub, payload) => webpush.sendNotification(
     { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload), { TTL: 86400, vapidDetails: details }));
 
@@ -121,7 +121,7 @@ export function registerPush(app, push) {
   });
 
   app.post('/api/push/test', pre, async (req, reply) => {
-    const n = await push.notify(req.user.id, { title: 'BibleFeed', body: 'Notifications are on. 🙏', url: '/' });
+    const n = await push.notify(req.user.id, { title: 'Manna', body: 'Notifications are on. 🙏', url: '/' });
     return n ? { ok: true } : reply.code(409).send({ error: 'No device is subscribed yet.' });
   });
 }
