@@ -9,6 +9,7 @@ import { registerAuth } from './auth.js';
 import { makeArt } from './art.js';
 import { dirname } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { makePosts, registerPosts } from './posts.js';
 import { registerOrgs } from './orgs.js';
 import { makeIngest, seedOrgs } from './ingest.js';
 
@@ -28,7 +29,9 @@ export async function buildApp({
   const memesDir = process.env.MEMES_DIR || (dbPath === ':memory:' ? `${root}data/memes-test` : `${dirname(dbPath)}/memes`);
   mkdirSync(memesDir, { recursive: true });
   const art = makeArt(db, bible, { artFile: `${root}data/art.json`, memesDir });
-  const feed = makeFeed(db, bible, `${root}data/featured.json`, art);
+  const uploadsDir = process.env.UPLOADS_DIR || (dbPath === ':memory:' ? `${root}data/uploads-test` : `${dirname(dbPath)}/uploads`);
+  const posts = makePosts(db, uploadsDir);
+  const feed = makeFeed(db, bible, `${root}data/featured.json`, art, posts);
 
   const app = Fastify({ logger, trustProxy: true, bodyLimit: 64 * 1024 });
   await app.register(fastifyCookie);
@@ -46,6 +49,7 @@ export async function buildApp({
   let running = null;
   ingest.runGuarded = () => (running ??= ingest.run().finally(() => { running = null; }));
   registerOrgs(app, db, ingest);
+  registerPosts(app, posts);
   let timer;
   if (ingestEveryMin > 0) {
     const tick = () => ingest.runGuarded().then((r) => app.log.info({ ingest: r }, 'ingest done')).catch((e) => app.log.error(e));
@@ -85,6 +89,12 @@ export async function buildApp({
       if (!req.user) return reply.code(401).send({ error: 'Please sign in.' });
     });
     await scope.register(fastifyStatic, { root: memesDir, prefix: '/memes/', decorateReply: false, maxAge: '1d' });
+  });
+  await app.register(async (scope) => {
+    scope.addHook('onRequest', async (req, reply) => {
+      if (!req.user) return reply.code(401).send({ error: 'Please sign in.' });
+    });
+    await scope.register(fastifyStatic, { root: uploadsDir, prefix: '/uploads/', decorateReply: false, maxAge: '7d' });
   });
   app.get('/api/art/credits', { preHandler: app.requireUser }, async () => ({ credits: art.credits }));
 

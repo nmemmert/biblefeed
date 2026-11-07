@@ -133,3 +133,35 @@ input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .credits { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; }
 .credits summary { cursor: pointer; } .credits p, .credits li { font-size: 14px; color: var(--muted); }
 .credits ul { padding-left: 18px; } .credits a { color: var(--accent); }
+
+/* Tab bar: center action */
+.tabbar button.plus .ic { background: var(--accent); color: var(--bg); width: 40px; height: 30px; line-height: 30px; border-radius: 12px;
+  font-size: 22px; margin-top: 2px; } .tabbar button.plus { font-size: 0; gap: 0; }
+.topbar .icon { background: none; border: 0; font-size: 22px; padding: 4px 6px; }
+/* Kind marks */
+.kind { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; padding: 2px 7px; border-radius: 6px;
+  margin-right: 8px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.kind.audio { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--gold); }
+audio { width: 100%; margin: 6px 0 10px; }
+/* Family posts */
+.post { padding: 14px 16px 6px; } .post .actions { padding: 4px 0 6px; }
+.phead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; } .phead > div { flex: 1; }
+.phead .when { font-size: 13px; color: var(--muted); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: var(--bg); display: grid; place-items: center; font-weight: 700; }
+.pbody { white-space: pre-wrap; word-break: break-word; font-size: 17px; line-height: 1.5; margin: 6px 0 10px; }
+.pimg { width: 100%; max-height: 520px; object-fit: cover; border-radius: 12px; display: block; margin: 0 0 8px; }
+.att { display: block; border-left: 3px solid var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent);
+  margin: 4px 0 10px; padding: 10px 12px; border-radius: 0 10px 10px 0; font: 400 16px/1.5 var(--serif); color: inherit; text-decoration: none; }
+.att cite { display: block; font: 600 13px var(--sans); color: var(--muted); margin-top: 4px; font-style: normal; }
+.att.link b { display: block; font: 600 15px var(--sans); } .att.link span { font: 400 13px var(--sans); color: var(--muted); }
+.thread { border-top: 1px solid var(--line); padding: 8px 0; } .cmt { font-size: 15px; padding: 5px 0; line-height: 1.4; }
+.cmt .x, .post .x { background: none; border: 0; color: var(--muted); padding: 2px 6px; }
+.reply { display: flex; gap: 8px; margin-top: 6px; } .reply input { padding: 9px 12px; font-size: 16px; }
+.reply button { border: 0; background: var(--accent); color: var(--bg); border-radius: 10px; padding: 0 14px; font-weight: 600; }
+textarea { width: 100%; padding: 13px 14px; font: 400 17px/1.5 var(--sans); border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface); color: inherit; resize: vertical; margin: 10px 0 4px; }
+.kinds { margin-bottom: 4px; } .kinds .sel { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.ctools { margin-bottom: 8px; } .ctools .link { width: auto; padding: 8px 0; }
+.cphoto img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 12px; }
+.cpreview .att p { margin: 4px 0 0; }
+[hidden] { display: none !important; }

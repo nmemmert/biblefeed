@@ -17,6 +17,11 @@ Articles and videos come only from organizations you approve (**Me → Organizat
 
 Feeds are fetched every 90 min (`INGEST_EVERY_MIN`, `0` disables) or on demand with **Fetch new content now**. Only titles, excerpts, images and links are stored; articles open on the original site, videos play in the official YouTube embed.
 
+## Family posts
+The **Family** tab is a private feed for your invited users: reflections, prayer requests (🙏 *Praying* reactions), photos, and shared cards (**👪 Family** button on any verse, art, article, video or audio card). Replies and reactions are supported. Posts publish immediately; authors can delete their own and the admin can delete any. Photos are resized on the phone, stored in `/DATA/AppData/biblefeed/uploads/` and only viewable when logged in. Recent family posts also show up in the main feed.
+
+Audio (podcast) items are clearly marked **🎧 AUDIO** and play inline or link to the source; videos are marked **▶ VIDEO**.
+
 ## Art & memes
 Art cards pair public-domain Gustave Doré Bible engravings (from Wikimedia Commons, credited under **Me → About → Art credits**) with a BSB verse. **Share image** renders the card to a PNG for the iPhone share sheet. Your own memes: drop public-domain/own images into `/DATA/AppData/biblefeed/memes/` (optional caption in a same-named `.txt`); they appear in the feed within a minute and require login to view.
 

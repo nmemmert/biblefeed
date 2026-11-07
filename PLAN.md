@@ -44,7 +44,7 @@ Exact feed URLs to be verified in phase 2.
 3. **Admin:** approval page, suggestion queue, user/invite management.
 4. **Visuals:** public-domain art library, verse-on-image generator, `memes/` folder importer.
 5. **Per-user:** saved items, seen tracking, light personalization, push notifications (daily verse).
-6. **Family posts:** users post reflections, prayer requests (own type) and photos; reactions (amen/pray) and replies; posts publish automatically; users delete their own, admin can delete any; photo upload with size/type limits and resize; optional reply push notifications.
+6. **Family posts (done):** users post reflections, prayer requests (own type) and photos; reactions (amen/pray) and replies; posts publish automatically; users delete their own, admin can delete any; photo upload with size/type limits and resize; optional reply push notifications.
 7. **Ops:** backups of the SQLite volume, logging, health check, Cloudflare Tunnel setup guide.
 
 ## Open items

@@ -19,10 +19,10 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
-async function api(path, body) {
+async function api(path, body, method) {
   const res = await fetch(path, body
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    : undefined);
+    ? { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    : method ? { method } : undefined);
   let data = {};
   try { data = await res.json(); } catch { /* empty */ }
   if (res.status === 401 && me) { me = null; boot(); }
@@ -58,19 +58,19 @@ function gradFor(id) {
 }
 
 // ---------- routing ----------
-const TABS = [['feed', '🏠', 'Feed'], ['search', '🔍', 'Search'], ['bible', '📖', 'Bible'], ['me', '👤', 'Me']];
+const TABS = [['feed', '🏠', 'Feed'], ['family', '👪', 'Family'], ['compose', '＋', 'Post'], ['bible', '📖', 'Bible'], ['me', '👤', 'Me']];
 let cleanup = null;
 
 function route() {
   if (cleanup) { cleanup(); cleanup = null; }
   const [name = 'feed', ...args] = decodeURIComponent(location.hash.slice(1)).split('/');
-  const views = { feed: viewFeed, search: viewSearch, bible: viewBible, me: viewMe, orgs: viewOrgs };
+  const views = { feed: viewFeed, search: viewSearch, bible: viewBible, me: viewMe, orgs: viewOrgs, family: viewFamily, compose: viewCompose };
   const view = views[name] || viewFeed;
-  const tab = name === 'orgs' ? 'me' : views[name] ? name : 'feed';
+  const tab = name === 'orgs' ? 'me' : name === 'search' ? 'feed' : views[name] ? name : 'feed';
   const content = h('div');
   const shell = h('div', { class: 'shell' }, content,
     h('nav', { class: 'tabbar' }, TABS.map(([id, ic, label]) =>
-      h('button', { 'aria-current': id === tab ? 'page' : null, onclick: () => (location.hash = id) },
+      h('button', { class: id === 'compose' ? 'plus' : null, 'aria-current': id === tab ? 'page' : null, onclick: () => (location.hash = id) },
         h('span', { class: 'ic' }, ic), label))));
   $app.replaceChildren(shell);
   const r = view(content, args);
@@ -113,10 +113,10 @@ function viewAuth(needsSetup) {
       field('Email', f.email), field('Password', f.password),
       mode === 'register' && field('Invite code', f.code),
       err, btn);
-    root.replaceChildren(
+    root.replaceChildren(...[
       h('h1', {}, 'BibleFeed'), h('p', { class: 'sub' }, titles[mode]), form,
       !needsSetup && h('button', { class: 'link', onclick: () => { mode = mode === 'login' ? 'register' : 'login'; render(); } },
-        mode === 'login' ? 'Have an invite code? Join' : 'Already have an account? Sign in'));
+        mode === 'login' ? 'Have an invite code? Join' : 'Already have an account? Sign in')].filter(Boolean));
   }
   render();
   $app.replaceChildren(root);
@@ -130,7 +130,7 @@ function verseCard(item) {
     h('div', { class: 'ref' }, `${item.ref} · BSB`));
   const amen = h('button', { onclick: (e) => { e.currentTarget.classList.toggle('on'); } }, '🙏 Amen');
   const share = h('button', { onclick: () => shareText(item.text, item.ref) }, '⤴ Share');
-  return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, amen, share));
+  return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, amen, share, famBtn({ type: 'verse', ref: item.ref, text: item.text })));
 }
 
 const ago = (ms) => {
@@ -140,8 +140,24 @@ const ago = (ms) => {
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 
 function sourceLine(item) {
-  return h('div', { class: 'src' }, h('b', {}, item.org), h('span', { class: 'badge', title: 'Approved source' }, '✓'),
+  const mark = { audio: '🎧 AUDIO', video: '▶ VIDEO' }[item.type];
+  return h('div', { class: 'src' }, mark && h('span', { class: `kind ${item.type}` }, mark),
+    h('b', {}, item.org), h('span', { class: 'badge', title: 'Approved source' }, '✓'),
     h('span', { class: 'when' }, ` · ${ago(item.published_at)}`));
+}
+
+function toFamily(attach) {
+  sessionStorage.setItem('bf_attach', JSON.stringify(attach));
+  location.hash = 'compose';
+}
+const famBtn = (attach) => h('button', { onclick: () => toFamily(attach) }, '👪 Family');
+
+function audioCard(item) {
+  const player = h('audio', { controls: true, preload: 'none', src: item.audio_url });
+  return h('article', { class: 'card' },
+    h('div', { class: 'body' }, sourceLine(item), h('h2', {}, item.title), item.excerpt && h('p', {}, item.excerpt),
+      player, h('a', { class: 'go', href: item.url, target: '_blank', rel: 'noopener noreferrer' }, `Listen on ${hostOf(item.url)} ›`)),
+    h('div', { class: 'actions' }, famBtn({ type: 'link', title: item.title, url: item.url, org: item.org })));
 }
 
 function articleCard(item) {
@@ -150,7 +166,8 @@ function articleCard(item) {
     h('div', { class: 'body' }, sourceLine(item), h('h2', {}, item.title),
       item.excerpt && h('p', {}, item.excerpt), h('span', { class: 'go' }, `Read on ${hostOf(item.url)} ›`)));
   return h('article', { class: 'card' }, link,
-    h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share')));
+    h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share'),
+      famBtn({ type: 'link', title: item.title, url: item.url, org: item.org })));
 }
 
 function videoCard(item) {
@@ -164,7 +181,8 @@ function videoCard(item) {
   box.append(play);
   return h('article', { class: 'card' }, box,
     h('div', { class: 'body pad' }, sourceLine(item), h('h2', {}, item.title)),
-    h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share')));
+    h('div', { class: 'actions' }, h('button', { onclick: () => navigator.share ? navigator.share({ title: item.title, url: item.url }).catch(() => {}) : navigator.clipboard.writeText(item.url).then(() => toast('Link copied')) }, '⤴ Share'),
+      famBtn({ type: 'link', title: item.title, url: item.url, org: item.org })));
 }
 
 // Render art + verse to a PNG (client-side canvas) so it can be shared as an image.
@@ -211,15 +229,19 @@ function artCard(item) {
   const acts = [h('button', { onclick: (e) => e.currentTarget.classList.toggle('on') }, '🙏 Amen')];
   if (item.ref) acts.push(h('button', { onclick: () => shareImage(item) }, '🖼 Share image'));
   else acts.push(h('button', { onclick: () => shareText(item.text || 'BibleFeed', '') }, '⤴ Share'));
+  if (item.ref) acts.push(famBtn({ type: 'verse', ref: item.ref, text: item.text, image: item.image }));
   return h('article', { class: 'card' }, face, h('div', { class: 'actions' }, acts));
 }
 
-const cardFor = (it) => it.type === 'art' || it.type === 'meme' ? artCard(it) : (it.type === 'article' ? articleCard(it) : it.type === 'video' ? videoCard(it) : verseCard(it));
+const cardFor = (it) => it.type === 'art' || it.type === 'meme' ? artCard(it)
+  : it.type === 'article' ? articleCard(it) : it.type === 'video' ? videoCard(it)
+  : it.type === 'audio' ? audioCard(it) : it.type === 'post' ? postCard(it) : verseCard(it);
 
 function viewFeed(root) {
   const list = h('div', { class: 'page' });
   const sentinel = h('div', { class: 'sentinel' }, 'Loading…');
-  root.append(h('header', { class: 'topbar' }, h('h1', {}, 'BibleFeed')), list, sentinel);
+  root.append(h('header', { class: 'topbar' }, h('h1', {}, 'BibleFeed'),
+    h('button', { class: 'icon', 'aria-label': 'Search', onclick: () => (location.hash = 'search') }, '🔍')), list, sentinel);
   let loading = false, done = false;
   async function more() {
     if (loading || done) return;
@@ -236,6 +258,136 @@ function viewFeed(root) {
   io.observe(sentinel);
   more();
   return () => io.disconnect();
+}
+
+// ---------- family ----------
+function postCard(p) {
+  const pid = p.post_id ?? p.id;
+  const label = { prayer: '🙏 Prayer request', photo: '📷 Photo', reflection: '✍️ Reflection' }[p.kind];
+  const card = h('article', { class: 'card post' });
+  const react = p.kind === 'prayer' ? ['pray', 'Praying'] : ['amen', 'Amen'];
+  const rbtn = h('button', { class: p[`mine_${react[0]}`] ? 'on' : '' });
+  const cbtn = h('button', {});
+  const paint = () => {
+    rbtn.textContent = `🙏 ${react[1]}${p[react[0]] ? ` · ${p[react[0]]}` : ''}`;
+    rbtn.classList.toggle('on', !!p[`mine_${react[0]}`]);
+    cbtn.textContent = `💬 ${p.comments || 'Reply'}`;
+  };
+  rbtn.onclick = async () => {
+    try { Object.assign(p, await api(`/api/posts/${pid}/react`, { kind: react[0] })); paint(); } catch (ex) { toast(ex.message); }
+  };
+  const thread = h('div', { class: 'thread', hidden: true });
+  let loaded = false;
+  async function showComments(list) {
+    thread.replaceChildren(...list.map((c) => h('div', { class: 'cmt' }, h('b', {}, c.author), ' ', c.body,
+      (c.user_id === me.id || me.role === 'admin') && h('button', { class: 'x', 'aria-label': 'Delete reply', onclick: async () => {
+        await api(`/api/comments/${c.id}`, undefined, 'DELETE'); p.comments--; paint(); showComments((await api(`/api/posts/${pid}/comments`)).comments);
+      } }, '✕'))),
+      (() => {
+        const input = h('input', { type: 'text', placeholder: 'Write a reply…', maxlength: 500, 'aria-label': 'Reply' });
+        return h('form', { class: 'reply', onsubmit: async (e) => {
+          e.preventDefault(); if (!input.value.trim()) return;
+          try { const r = await api(`/api/posts/${pid}/comments`, { body: input.value }); p.comments = r.comments.length; paint(); showComments(r.comments); }
+          catch (ex) { toast(ex.message); }
+        } }, input, h('button', { type: 'submit' }, 'Send'));
+      })());
+  }
+  cbtn.onclick = async () => {
+    thread.hidden = !thread.hidden;
+    if (!thread.hidden && !loaded) { loaded = true; showComments((await api(`/api/posts/${pid}/comments`)).comments); }
+  };
+  paint();
+  const mine = p.user_id === me.id || me.role === 'admin';
+  const a = p.attach;
+  card.append(...[
+    h('div', { class: 'phead' }, h('span', { class: 'avatar', 'aria-hidden': 'true' }, (p.author || '?')[0].toUpperCase()),
+      h('div', {}, h('b', {}, p.author), h('div', { class: 'when' }, `${ago(p.created_at)}${label ? ` · ${label}` : ''}`)),
+      mine && h('button', { class: 'x more', 'aria-label': 'Delete post', onclick: async () => {
+        if (!confirm('Delete this post?')) return;
+        try { await api(`/api/posts/${pid}`, undefined, 'DELETE'); card.remove(); } catch (ex) { toast(ex.message); }
+      } }, '🗑')),
+    p.body && h('p', { class: 'pbody' }, p.body),
+    p.image && h('img', { class: 'pimg', src: p.image, alt: 'Photo shared by ' + p.author, loading: 'lazy' }),
+    a?.type === 'verse' && h('blockquote', { class: 'att' }, quoted(a.text), h('cite', {}, `${a.ref} · BSB`)),
+    a?.type === 'link' && h('a', { class: 'att link', href: a.url, target: '_blank', rel: 'noopener noreferrer' },
+      h('b', {}, a.title), h('span', {}, `${a.org ? `${a.org} · ` : ''}${hostOf(a.url)} ›`)),
+    h('div', { class: 'actions' }, rbtn, cbtn), thread].filter(Boolean));
+  return card;
+}
+
+function viewFamily(root) {
+  const list = h('div', { class: 'page' });
+  const more = h('button', { class: 'link', hidden: true }, 'Load older posts');
+  root.append(h('header', { class: 'topbar' }, h('h1', {}, 'Family'),
+    h('button', { class: 'icon', 'aria-label': 'New post', onclick: () => (location.hash = 'compose') }, '＋')), list, more);
+  let last = null;
+  async function load() {
+    const { posts } = await api(`/api/posts${last ? `?before=${last}` : ''}`);
+    if (!posts.length && !last) list.append(h('div', { class: 'empty' }, 'No posts yet. Share a reflection or a prayer request with ＋'));
+    list.append(...posts.map(postCard));
+    if (posts.length) last = posts[posts.length - 1].id;
+    more.hidden = posts.length < 20;
+  }
+  more.onclick = load;
+  load();
+}
+
+async function resizeToJpeg(file, max = 1600) {
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch { bmp = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
+  const w = bmp.width || bmp.naturalWidth, hgt = bmp.height || bmp.naturalHeight;
+  const k = Math.min(1, max / Math.max(w, hgt));
+  const c = Object.assign(document.createElement('canvas'), { width: Math.round(w * k), height: Math.round(hgt * k) });
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.82));
+}
+
+function viewCompose(root) {
+  let attach = null;
+  try { attach = JSON.parse(sessionStorage.getItem('bf_attach') || 'null'); } catch { /* none */ }
+  let kind = 'reflection', image = null;
+  const body = h('textarea', { rows: 6, maxlength: 2000, placeholder: attach ? 'Add a comment (optional)…' : 'Share a reflection or a prayer request…', 'aria-label': 'Your post' });
+  const err = h('div', { class: 'err', role: 'alert' });
+  const preview = h('div', { class: 'cpreview' });
+  const chips = h('div', { class: 'chips kinds' });
+  const paintChips = () => chips.replaceChildren(...[['reflection', '✍️ Reflection'], ['prayer', '🙏 Prayer request']].map(([k, l]) =>
+    h('button', { type: 'button', 'aria-pressed': String(kind === k), class: kind === k ? 'sel' : '', onclick: () => { kind = k; paintChips(); } }, l)));
+  paintChips();
+  const paintAttach = () => {
+    preview.replaceChildren(...[
+      attach && h('div', { class: 'att' }, h('b', {}, attach.type === 'verse' ? `${attach.ref} · BSB` : attach.title),
+        h('p', {}, attach.type === 'verse' ? quoted(attach.text) : attach.org || hostOf(attach.url)),
+        h('button', { type: 'button', class: 'link', onclick: () => { attach = null; sessionStorage.removeItem('bf_attach'); paintAttach(); chips.hidden = false; } }, 'Remove')),
+      image && h('div', { class: 'cphoto' }, h('img', { src: image.url, alt: 'Selected photo' }),
+        h('button', { type: 'button', class: 'link', onclick: () => { image = null; paintAttach(); } }, 'Remove photo'))].filter(Boolean));
+  };
+  chips.hidden = !!attach;
+  paintAttach();
+  const file = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    err.textContent = 'Preparing photo…';
+    try {
+      const blob = await resizeToJpeg(f);
+      const res = await fetch('/api/uploads', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed.');
+      image = { file: data.file, url: URL.createObjectURL(blob) };
+      err.textContent = ''; paintAttach();
+    } catch (ex) { err.textContent = ex.message || 'Couldn’t add that photo.'; }
+    e.target.value = '';
+  } });
+  const send = h('button', { class: 'btn', type: 'submit' }, 'Post to family');
+  const form = h('form', { onsubmit: async (e) => {
+    e.preventDefault(); err.textContent = ''; send.disabled = true;
+    try {
+      const k = attach ? 'share' : image && !body.value.trim() && kind === 'reflection' ? 'photo' : kind;
+      await api('/api/posts', { kind: k, body: body.value, image: image?.file, attach });
+      sessionStorage.removeItem('bf_attach');
+      location.hash = 'family';
+    } catch (ex) { err.textContent = ex.message; send.disabled = false; }
+  } }, chips, preview, body, h('div', { class: 'ctools' }, h('button', { type: 'button', class: 'link', onclick: () => file.click() }, '📷 Add photo'), file), err, send);
+  root.append(h('header', { class: 'topbar' }, h('h1', {}, 'New post')), h('div', { class: 'page' }, form));
 }
 
 // ---------- search ----------

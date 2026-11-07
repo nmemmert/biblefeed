@@ -53,9 +53,10 @@ CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY,
   source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
   org_id INTEGER NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK (type IN ('article','video')),
+  type TEXT NOT NULL CHECK (type IN ('article','video','audio')),
   url TEXT NOT NULL UNIQUE,
   video_id TEXT,
+  audio_url TEXT,
   title TEXT NOT NULL,
   excerpt TEXT,
   image TEXT,
@@ -63,6 +64,30 @@ CREATE TABLE IF NOT EXISTS items (
   fetched_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS items_org_type ON items (org_id, type, published_at DESC);
+CREATE TABLE IF NOT EXISTS posts (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('reflection','prayer','photo','share')),
+  body TEXT NOT NULL DEFAULT '',
+  image TEXT,
+  attach TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS posts_created ON posts (id DESC);
+CREATE TABLE IF NOT EXISTS reactions (
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('amen','pray')),
+  PRIMARY KEY (post_id, user_id, kind)
+);
+CREATE TABLE IF NOT EXISTS comments (
+  id INTEGER PRIMARY KEY,
+  post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comments_post ON comments (post_id, id);
 CREATE TABLE IF NOT EXISTS seen (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   item_id TEXT NOT NULL,
@@ -75,6 +100,12 @@ export function openDb(path) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(SCHEMA);
+  // `items` is a re-fetchable cache: rebuild it if it predates the 'audio' type.
+  const itemsSql = db.prepare("SELECT sql FROM sqlite_master WHERE name='items'").get()?.sql ?? '';
+  if (!itemsSql.includes("'audio'")) {
+    db.exec("DROP TABLE items; DELETE FROM seen WHERE item_id LIKE 'i:%'");
+    db.exec(SCHEMA);
+  }
   return db;
 }
 

@@ -3,7 +3,7 @@ import { refLabel } from './bible.js';
 
 const MAX_TRIES = 25;
 
-export function makeFeed(db, bible, featuredFile, art) {
+export function makeFeed(db, bible, featuredFile, art, posts) {
   const featured = JSON.parse(readFileSync(featuredFile, 'utf8'))
     .map((s) => bible.parseRef(s))
     .filter((r) => r && r.v1);
@@ -64,7 +64,7 @@ export function makeFeed(db, bible, featuredFile, art) {
     while (picked.length < n && pool.length) picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
     return picked.map((r) => ({
       id: `i:${r.id}`, type: r.type, org: r.org_name, title: r.title, excerpt: r.excerpt,
-      image: r.image, url: r.url, video_id: r.video_id, published_at: r.published_at,
+      image: r.image, url: r.url, video_id: r.video_id, audio_url: r.audio_url, published_at: r.published_at,
     }));
   }
 
@@ -75,7 +75,11 @@ export function makeFeed(db, bible, featuredFile, art) {
       ...(art ? art.pick(userId, Math.round(limit * 0.25)) : []),
       ...contentCards(userId, 'article', Math.round(limit * 0.2)),
       ...contentCards(userId, 'video', Math.round(limit * 0.15)),
+      ...contentCards(userId, 'audio', Math.round(limit * 0.1)),
     ].sort(() => Math.random() - 0.5);
+    // One family post per page (most recent unseen from someone else); shown first.
+    const fam = posts ? posts.recentUnseen(userId, 1).map((p) => ({ ...p, id: `f:${p.id}`, post_id: p.id, type: 'post' })) : [];
+    extras.unshift(...fam);
     const items = [];
     const ids = new Set();
     for (let i = 0; i < limit - extras.length; i++) {

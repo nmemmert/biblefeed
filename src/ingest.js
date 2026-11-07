@@ -42,7 +42,12 @@ export function parseFeed(xml) {
       const img = it['media:thumbnail']?.['@_url'] || it['media:content']?.['@_url'] ||
         (String(it.enclosure?.['@_type'] ?? '').startsWith('image') ? it.enclosure['@_url'] : null) ||
         /<img[^>]+src=["']([^"']+)/i.exec(body)?.[1];
-      out.push({ url, title, excerpt: plain(text(it.description) || body), image: safeHttpUrl(img ?? '', url), published_at: ts(it.pubDate) });
+      const enc = arr(it.enclosure).find((e) => String(e?.['@_type'] ?? '').startsWith('audio'));
+      out.push({
+        url, title, excerpt: plain(text(it.description) || body), image: safeHttpUrl(img ?? '', url), published_at: ts(it.pubDate),
+        audio_url: enc ? safeHttpUrl(enc['@_url'] ?? '') : null,
+        duration: text(it['itunes:duration']).slice(0, 12) || null,
+      });
     }
   } else if (doc.feed) {
     for (const e of arr(doc.feed.entry)) {
@@ -101,20 +106,20 @@ export function makeIngest(db, { fetch = fetchText, log = () => {} } = {}) {
   );
   const exists = db.prepare('SELECT 1 FROM items WHERE url=?');
   const insert = db.prepare(
-    `INSERT OR IGNORE INTO items (source_id, org_id, type, url, video_id, title, excerpt, image, published_at, fetched_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT OR IGNORE INTO items (source_id, org_id, type, url, video_id, audio_url, title, excerpt, image, published_at, fetched_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
   );
   const done = db.prepare('UPDATE sources SET last_run=?, last_error=? WHERE id=?');
 
   function store(src, type, it) {
-    const r = insert.run(src.id, src.org_id, type, it.url, it.video_id ?? null, it.title, it.excerpt || null, it.image || null, it.published_at, Date.now());
+    const r = insert.run(src.id, src.org_id, type, it.url, it.video_id ?? null, it.audio_url ?? null, it.title, it.excerpt || null, it.image || null, it.published_at, Date.now());
     return r.changes;
   }
 
   async function runSource(src) {
     let added = 0;
     if (src.kind === 'rss') {
-      for (const it of parseFeed(await fetch(src.url)).slice(0, MAX_PER_SOURCE)) added += store(src, 'article', it);
+      for (const it of parseFeed(await fetch(src.url)).slice(0, MAX_PER_SOURCE)) added += store(src, it.audio_url ? 'audio' : 'article', it);
     } else if (src.kind === 'youtube') {
       for (const it of parseFeed(await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${src.url}`)).slice(0, MAX_PER_SOURCE)) {
         if (it.video_id && /^[\w-]{11}$/.test(it.video_id)) added += store(src, 'video', it);
@@ -155,7 +160,7 @@ export const SEED = [
   { name: 'Answers in Genesis', site: 'https://answersingenesis.org',
     sources: [['html', 'https://answersingenesis.org/articles/'], ['youtube', 'UCicvc24eAbFp-thRrBnSP2A']] },
   { name: 'Truth For Life', site: 'https://www.truthforlife.org',
-    sources: [['youtube', 'UCsCyJ7xl8rQ10Cyz-fwJ5Xg']] },
+    sources: [['youtube', 'UCsCyJ7xl8rQ10Cyz-fwJ5Xg'], ['rss', 'http://feeds.feedburner.com/TruthForLife']] },
   { name: 'Living Waters', site: 'https://www.livingwaters.com',
     sources: [['rss', 'https://www.livingwaters.com/feed/'], ['youtube', 'UCoZ0hhPz0fwZFlqpWmbUdqg']] },
   { name: 'The Christian Post', site: 'https://www.christianpost.com',
@@ -176,13 +181,19 @@ export function seedOrgs(db) {
   db.exec('CREATE TABLE IF NOT EXISTS seeded (name TEXT PRIMARY KEY)');
   const done = db.prepare('SELECT 1 FROM seeded WHERE name=?');
   const mark = db.prepare('INSERT OR IGNORE INTO seeded (name) VALUES (?)');
+  const doneSrc = db.prepare('SELECT 1 FROM seeded WHERE name=?');
+  const markSrc = mark;
   const byName = db.prepare('SELECT id FROM orgs WHERE name=?');
   const o = db.prepare("INSERT INTO orgs (name, site, status, created_at) VALUES (?,?, 'approved', ?)");
   const s = db.prepare('INSERT OR IGNORE INTO sources (org_id, kind, url) VALUES (?,?,?)');
   for (const org of SEED) {
-    if (done.get(org.name)) continue;
-    const id = byName.get(org.name)?.id ?? o.run(org.name, org.site, Date.now()).lastInsertRowid;
-    for (const [kind, url] of org.sources) s.run(id, kind, url);
+    const existing = byName.get(org.name)?.id;
+    if (done.get(org.name) && !existing) continue; // starter was deleted by the admin: leave it gone
+    const id = existing ?? o.run(org.name, org.site, Date.now()).lastInsertRowid;
+    for (const [kind, url] of org.sources) {
+      const key = `${org.name}|${kind}|${url}`;
+      if (!doneSrc.get(key)) { s.run(id, kind, url); markSrc.run(key); } // each starter feed is added once
+    }
     mark.run(org.name);
   }
 }

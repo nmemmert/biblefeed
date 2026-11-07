@@ -188,3 +188,69 @@ test('seeding is once-only per starter org', async () => {
   seedOrgs(db);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM orgs').get().n, 5);
 });
+
+// ---------- phase 6: family posts ----------
+test('family posts: create, react, comment, permissions, feed', async () => {
+  const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(32)]);
+  const up = (payload, type, cookie) => app.inject({ method: 'POST', url: '/api/uploads', payload, headers: cookie ? { 'content-type': type, cookie } : { 'content-type': type } });
+  assert.equal((await up(PNG, 'image/png')).statusCode, 401);
+  assert.equal((await up(Buffer.from('<html>not an image</html>'), 'image/png', member)).statusCode, 400); // magic bytes checked
+  const { file } = (await up(PNG, 'image/png', member)).json();
+  assert.match(file, /^[a-f0-9]{24}\.png$/);
+  assert.equal((await get(`/uploads/${file}`)).statusCode, 401);
+  assert.equal((await get(`/uploads/${file}`, member)).statusCode, 200);
+
+  assert.equal((await post('/api/posts', { kind: 'prayer', body: '' }, member)).statusCode, 400);
+  assert.equal((await post('/api/posts', { kind: 'photo', body: 'hi' }, member)).statusCode, 400);
+  assert.equal((await post('/api/posts', { kind: 'nope', body: 'hi' }, member)).statusCode, 400);
+  const prayer = (await post('/api/posts', { kind: 'prayer', body: 'Pray for Grandpa <b>please</b>' }, member)).json().post;
+  assert.equal(prayer.author, 'Mom');
+  assert.equal(prayer.body, 'Pray for Grandpa <b>please</b>'); // stored raw; the client renders as text
+  const photo = (await post('/api/posts', { kind: 'photo', body: 'Sunday', image: file }, member)).json().post;
+  assert.equal(photo.image, `/uploads/${file}`);
+  const shared = (await post('/api/posts', { kind: 'share', body: 'Love this', attach: { type: 'verse', ref: 'John 3:16', text: 'For God so loved…' } }, admin)).json().post;
+  assert.equal(shared.attach.type, 'verse');
+  assert.equal((await post('/api/posts', { kind: 'share', body: 'x', attach: { type: 'link', title: 'T', url: 'javascript:alert(1)' } }, admin)).statusCode, 400);
+  assert.equal((await post('/api/posts', { kind: 'photo', body: 'x', image: '../../etc/passwd' }, admin)).statusCode, 400);
+
+  // reactions toggle
+  let r = (await post(`/api/posts/${prayer.id}/react`, { kind: 'pray' }, admin)).json();
+  assert.deepEqual([r.pray, r.mine_pray], [1, true]);
+  r = (await post(`/api/posts/${prayer.id}/react`, { kind: 'pray' }, admin)).json();
+  assert.deepEqual([r.pray, r.mine_pray], [0, false]);
+  assert.equal((await post(`/api/posts/${prayer.id}/react`, { kind: 'pray' }, member)).json().pray, 1);
+
+  // comments + permissions
+  const cs = (await post(`/api/posts/${prayer.id}/comments`, { body: 'Praying!' }, admin)).json().comments;
+  assert.equal(cs.length, 1);
+  assert.equal((await post(`/api/posts/${prayer.id}/comments`, { body: '  ' }, admin)).statusCode, 400);
+  const other = (await post('/api/invites', {}, admin)).json().code;
+  const third = cookieOf(await post('/api/register', { code: other, email: 't@x.com', name: 'Tim', password: 'password1' }));
+  assert.equal((await app.inject({ method: 'DELETE', url: `/api/comments/${cs[0].id}`, headers: { cookie: third } })).statusCode, 403);
+  assert.equal((await app.inject({ method: 'DELETE', url: `/api/posts/${prayer.id}`, headers: { cookie: third } })).statusCode, 403);
+
+  // listing + main feed shows others' posts
+  const list = (await get('/api/posts', third)).json().posts;
+  assert.equal(list[0].id, shared.id); // newest first
+  assert.ok(list.find((p) => p.id === prayer.id).comments === 1);
+  const feedItems = (await get('/api/feed?limit=8', third)).json().items;
+  assert.ok(feedItems.some((i) => i.type === 'post'), 'family post appears in main feed');
+
+  // author and admin may delete; deleting a photo post removes the file
+  assert.equal((await app.inject({ method: 'DELETE', url: `/api/posts/${prayer.id}`, headers: { cookie: member } })).statusCode, 200);
+  assert.equal((await app.inject({ method: 'DELETE', url: `/api/posts/${photo.id}`, headers: { cookie: admin } })).statusCode, 200);
+  assert.equal((await get(`/uploads/${file}`, member)).statusCode, 404);
+  const { rmSync } = await import('node:fs');
+  rmSync(new URL('../data/uploads-test/', import.meta.url), { recursive: true, force: true });
+});
+
+test('audio podcast items are typed and marked', async () => {
+  const xml = `<?xml version="1.0"?><rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel>
+    <item><title>Ep 1</title><link>https://ex.org/ep1</link><description>Hi</description><itunes:duration>24:10</itunes:duration>
+    <enclosure url="https://cdn.ex.org/ep1.mp3" type="audio/mpeg" length="1"/><pubDate>Mon, 02 Nov 2026 10:00:00 GMT</pubDate></item>
+    <item><title>Post</title><link>https://ex.org/post</link><enclosure url="https://ex.org/pic.jpg" type="image/jpeg"/></item></channel></rss>`;
+  const items = parseFeed(xml);
+  assert.equal(items[0].audio_url, 'https://cdn.ex.org/ep1.mp3');
+  assert.equal(items[0].duration, '24:10');
+  assert.equal(items[1].audio_url, null);
+});
