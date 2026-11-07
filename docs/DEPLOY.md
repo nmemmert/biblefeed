@@ -12,6 +12,14 @@ docker compose up -d --build
 ```
 Open `http://<zima-ip>:3000` → the first account you create is the admin.
 
+### Using Gitea instead of (or as well as) GitHub
+`.gitea/workflows/docker.yml` does the same job on a Gitea server with Actions enabled and an `act_runner` that can use Docker:
+tests, builds the x86-64 image, and from `main` / `v*` tags pushes it to **your Gitea's container registry**.
+1. Get the code onto Gitea (push a second remote, or set up a mirror): `git remote add gitea http://<gitea>/<you>/biblefeed.git && git push gitea main`.
+2. In that repo: **Settings → Actions → Secrets** → add `REGISTRY_TOKEN` (a Gitea access token with `write:package`).
+3. Push to `main` → the image appears under **Packages**. In `.env` set `BIBLEFEED_IMAGE=<gitea-host>/<you>/biblefeed:latest`.
+4. If your Gitea is plain `http://` on the LAN, Docker must trust it as an *insecure registry* on both the runner host (to push) and the ZimaOS box (to pull) — add it to Docker's `daemon.json` (`"insecure-registries": ["<gitea-host>:3000"]`) and restart Docker. A Gitea behind HTTPS needs nothing.
+
 ## 2. HTTPS with a Cloudflare Tunnel (needed for iPhone install + notifications)
 You need a domain on Cloudflare (free plan is fine).
 1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel** (wording may differ slightly) → choose *Cloudflared* → copy the **token**.
