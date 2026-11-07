@@ -1,0 +1,23 @@
+{
+  "name": "biblefeed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted family Bible feed PWA",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "invite": "node --disable-warning=ExperimentalWarning scripts/create-invite.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.1",
+    "@fastify/static": "^10.1.10",
+    "fast-xml-parser": "^5.12.0",
+    "fastify": "^5.2.0",
+    "web-push": "^3.6.7"
+  }
+}

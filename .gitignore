@@ -1,0 +1,6 @@
+node_modules
+data/*.db*
+.env
+data/memes-test
+data/uploads-test
+data/backups-test
