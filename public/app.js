@@ -189,7 +189,7 @@ function videoCard(item) {
   const play = h('button', { class: 'thumb', 'aria-label': `Play ${item.title}`, onclick: () => {
     box.replaceChildren(h('iframe', {
       src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(item.video_id)}?autoplay=1&playsinline=1&rel=0`,
-      allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
+      allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
       referrerpolicy: 'strict-origin-when-cross-origin', title: item.title }));
   } }, item.image && h('img', { src: item.image, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }), h('span', { class: 'play' }, '▶'));
   box.append(play);
@@ -513,7 +513,8 @@ async function viewMe(root) {
       h('div', { class: 'sect' }, 'Admin'),
       h('ul', { class: 'list' },
         h('li', {}, h('button', { onclick: () => (location.hash = 'orgs') }, 'Organizations & sources', h('span', { class: 'meta' }, '›'))),
-        h('li', {}, h('button', { onclick: () => (location.hash = 'users') }, 'Family members', h('span', { class: 'meta' }, '›')))),
+        h('li', {}, h('button', { onclick: () => (location.hash = 'users') }, 'Family members', h('span', { class: 'meta' }, '›'))),
+        h('li', {}, backupRow())),
       h('div', { class: 'sect' }, 'Family invites'),
       h('button', { class: 'btn', onclick: async () => { await api('/api/invites', {}); load(); } }, 'New invite code'),
       h('div', { style: 'height:12px' }), codes);
@@ -614,6 +615,16 @@ function passwordBox() {
       try { await api('/api/me/password', { current: cur.value, next: nxt.value }); cur.value = nxt.value = ''; toast('Password changed'); }
       catch (ex) { msg.textContent = ex.message; }
     } }, h('label', { class: 'field' }, cur), h('label', { class: 'field' }, nxt), msg, h('button', { class: 'btn', type: 'submit' }, 'Change password')));
+}
+
+function backupRow() {
+  const meta = h('span', { class: 'meta' }, '');
+  const btn = h('button', { onclick: async () => {
+    try { const r = await api('/api/backup/run', {}); toast(`Backup saved (${(r.backup.bytes / 1048576).toFixed(1)} MB)`); show(r.backups); } catch (ex) { toast(ex.message); }
+  } }, 'Back up database now', meta);
+  const show = (list) => { meta.textContent = list[0] ? `last: ${new Date(list[0].mtime).toLocaleDateString()}` : 'none yet'; };
+  api('/api/backup').then((r) => show(r.backups)).catch(() => {});
+  return btn;
 }
 
 function creditsBox() {

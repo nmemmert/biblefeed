@@ -45,7 +45,7 @@ Exact feed URLs to be verified in phase 2.
 4. **Visuals:** public-domain art library, verse-on-image generator, `memes/` folder importer.
 5. **Per-user (done):** saved items, seen tracking, light personalization, push notifications (daily verse).
 6. **Family posts (done):** users post reflections, prayer requests (own type) and photos; reactions (amen/pray) and replies; posts publish automatically; users delete their own, admin can delete any; photo upload with size/type limits and resize; optional reply push notifications.
-7. **Ops:** backups of the SQLite volume, logging, health check, Cloudflare Tunnel setup guide.
+7. **Ops (done):** backups of the SQLite volume, logging, health check, Cloudflare Tunnel setup guide.
 
 ## Open items
 - Confirm the tunnel vs. domain route once the ZimaOS box's network is known.

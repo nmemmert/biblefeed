@@ -1,14 +1,37 @@
-# Works as a ZimaOS custom app (App Store → Custom Install → import this file),
-# or on any Docker host: `docker compose up -d --build`
+# BibleFeed — works as a ZimaOS custom app (App Store → Custom Install → import this file)
+# or on any Docker host:  docker compose up -d --build
+#
+# For iPhone install + notifications you need HTTPS. Easiest: a Cloudflare Tunnel.
+# Put TUNNEL_TOKEN=... in a .env file next to this one and run:
+#   docker compose --profile tunnel up -d --build
+# (see docs/DEPLOY.md)
 services:
   biblefeed:
+    # Pulled from GitHub Container Registry (see .github/workflows/docker.yml); `--build` builds it locally instead.
+    image: ghcr.io/nmemmert/biblefeed:latest
     build: .
     container_name: biblefeed
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      # Set to "true" once you serve it over HTTPS (Cloudflare Tunnel / Caddy).
-      COOKIE_SECURE: "false"
+      # "true" once you reach the app over HTTPS (the tunnel does). Required for secure cookies.
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # Optional contact in push headers, e.g. mailto:you@example.com
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@biblefeed.local}"
+      INGEST_EVERY_MIN: "${INGEST_EVERY_MIN:-90}"
+      BACKUP_EVERY_HOURS: "${BACKUP_EVERY_HOURS:-24}"
     volumes:
+      # database, uploads/, memes/ and backups/ all live here — back this folder up
       - /DATA/AppData/biblefeed:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: biblefeed-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"
+    depends_on:
+      - biblefeed

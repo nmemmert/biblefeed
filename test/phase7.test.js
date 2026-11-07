@@ -136,3 +136,47 @@ test('user management', async () => {
   assert.equal(app.db.prepare('SELECT COUNT(*) n FROM push_subs WHERE user_id=?').get(momId).n, 0);
   assert.equal((await del('/api/users/' + 1, admin)).statusCode, 409); // can't remove yourself
 });
+
+test('app shell files are served (service worker, manifest, icons, entry)', async () => {
+  for (const [path, type] of [['/', 'text/html'], ['/app.js', 'javascript'], ['/style.css', 'text/css'], ['/sw.js', 'javascript'],
+    ['/manifest.webmanifest', ''], ['/icons/icon-192.png', 'image/png'], ['/icons/apple-touch-icon.png', 'image/png'], ['/art/dove-ark.jpg', 'image/jpeg']]) {
+    const r = await get(path);
+    assert.equal(r.statusCode, 200, path);
+    assert.ok(r.headers['content-type'].includes(type), `${path} ${r.headers['content-type']}`);
+  }
+  assert.match((await get('/sw.js')).headers['cache-control'], /no-cache/);
+  assert.equal(JSON.parse((await get('/manifest.webmanifest')).body).display, 'standalone');
+});
+
+test('hardening: backups, health, CSP, protected static files', async () => {
+  const { rmSync, existsSync } = await import('node:fs');
+  assert.equal((await get('/healthz')).json().ok, true);
+  const h = (await get('/')).headers;
+  assert.match(h['content-security-policy'], /script-src 'self'/);
+  assert.match(h['content-security-policy'], /frame-src https:\/\/www\.youtube-nocookie\.com/);
+  assert.equal(h['x-frame-options'], 'DENY');
+
+  // protected folders: no way around the login check
+  for (const path of ['/uploads/', '/uploads/%2e%2e/%2e%2e/package.json', '/uploads/..%2fpackage.json', '/memes/', '/memes/%2e%2e%2fpackage.json']) {
+    const res = await get(path);
+    assert.ok([401, 403, 404].includes(res.statusCode), `${path} -> ${res.statusCode}`);
+    assert.ok(!res.body.includes('"name": "biblefeed"'), `${path} leaked a file`);
+  }
+
+  // admin-only backup; produces a valid, restorable SQLite snapshot and prunes to 7
+  const { code } = (await post('/api/invites', {}, admin)).json();
+  const aunt = cookieOf(await post('/api/register', { code, email: 'aunt@x.com', name: 'Aunt', password: 'password1' }));
+  assert.equal((await post('/api/backup/run', {}, aunt)).statusCode, 403);
+  assert.equal((await post('/api/backup/run', {})).statusCode, 401);
+  const r = (await post('/api/backup/run', {}, admin)).json();
+  assert.match(r.backup.name, /^biblefeed-\d{4}-\d{2}-\d{2}\.db$/);
+  const { DatabaseSync } = await import('node:sqlite');
+  const copy = new DatabaseSync(`${app.backup.dir}/${r.backup.name}`);
+  assert.ok(copy.prepare('SELECT COUNT(*) n FROM verses').get().n > 31000);
+  assert.ok(copy.prepare('SELECT COUNT(*) n FROM users').get().n >= 1);
+  copy.close();
+  for (let d = 1; d <= 9; d++) app.backup.run(new Date(Date.UTC(2026, 0, d)));
+  assert.equal(app.backup.list().length, 7);
+  rmSync(app.backup.dir, { recursive: true, force: true });
+  assert.ok(!existsSync(app.backup.dir));
+});

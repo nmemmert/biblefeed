@@ -13,10 +13,18 @@ import { makePosts, registerPosts } from './posts.js';
 import { registerMarks } from './marks.js';
 import { makePush, registerPush } from './push.js';
 import { registerUsers } from './users.js';
+import { makeBackup } from './backup.js';
 import { registerOrgs } from './orgs.js';
 import { makeIngest, seedOrgs } from './ingest.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+
+// Scripts only from our own origin; YouTube's privacy-enhanced player is the only allowed frame.
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:", "media-src 'self' blob: https:", 'frame-src https://www.youtube-nocookie.com',
+  "connect-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+].join('; ');
 
 export async function buildApp({
   dbPath = `${root}data/biblefeed.db`,
@@ -26,6 +34,7 @@ export async function buildApp({
   ingestEveryMin = 0,
   pushOpts = {},
   dailyPush = false,
+  backupEveryHours = 0,
 } = {}) {
   const db = openDb(dbPath);
   ensureBsb(db, `${root}data/bsb.txt`);
@@ -45,7 +54,11 @@ export async function buildApp({
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'same-origin');
     reply.header('X-Frame-Options', 'DENY');
+    reply.header('Content-Security-Policy', CSP);
+    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (cookieSecure) reply.header('Strict-Transport-Security', 'max-age=15552000');
     if (req.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store');
+    if (req.url.split('?')[0] === '/sw.js') reply.header('Cache-Control', 'no-cache'); // always re-check the service worker
   });
 
   registerAuth(app, db, { cookieSecure });
@@ -60,7 +73,17 @@ export async function buildApp({
   registerPush(app, push);
   registerUsers(app, db, posts);
   app.decorate('push', push);
-  let timer, pushTimer;
+  const backup = makeBackup(db, process.env.BACKUP_DIR || (dbPath === ':memory:' ? `${root}data/backups-test` : `${dirname(dbPath)}/backups`));
+  app.decorate('backup', backup);
+  app.post('/api/backup/run', { preHandler: app.requireAdmin }, async () => ({ backup: backup.run(), backups: backup.list() }));
+  app.get('/api/backup', { preHandler: app.requireAdmin }, async () => ({ backups: backup.list() }));
+  let timer, pushTimer, backupTimer;
+  if (backupEveryHours > 0 && dbPath !== ':memory:') {
+    const runBackup = () => { try { const r = backup.run(); app.log.info({ backup: r }, 'backup done'); } catch (e) { app.log.error(e, 'backup failed'); } };
+    setTimeout(runBackup, 60_000).unref();
+    backupTimer = setInterval(runBackup, backupEveryHours * 3600 * 1000);
+    backupTimer.unref();
+  }
   if (dailyPush) {
     pushTimer = setInterval(() => push.dailyTick().catch((e) => app.log.error(e)), 10 * 60 * 1000);
     pushTimer.unref();
@@ -72,7 +95,10 @@ export async function buildApp({
     timer.unref();
   }
 
-  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/healthz', async (req, reply) => {
+    try { db.prepare('SELECT 1').get(); return { ok: true }; }
+    catch { return reply.code(503).send({ ok: false }); }
+  });
 
   app.get('/api/feed', { preHandler: app.requireUser }, async (req) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20);
@@ -114,15 +140,13 @@ export async function buildApp({
 
   await app.register(fastifyStatic, {
     root: `${root}public`,
-    setHeaders(res, path) {
-      if (path.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
-    },
   });
 
   app.decorate('db', db);
   app.addHook('onClose', async () => {
     clearInterval(timer);
     clearInterval(pushTimer);
+    clearInterval(backupTimer);
     await running?.catch(() => {});
     db.close();
   });

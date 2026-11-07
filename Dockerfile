@@ -7,9 +7,11 @@ COPY src ./src
 COPY public ./public
 COPY data/bsb.txt data/featured.json data/art.json ./data/
 COPY scripts ./scripts
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN apk add --no-cache su-exec && chmod +x /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /data && chown node:node /data
 VOLUME /data
 EXPOSE 3000
-USER node
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:3000/healthz || exit 1
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "--disable-warning=ExperimentalWarning", "src/server.js"]

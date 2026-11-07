@@ -5,6 +5,8 @@ A self-hosted, family-friendly Bible feed that installs on an iPhone as a PWA. C
 Scripture: Berean Standard Bible — public domain.
 
 ## Run on ZimaOS / Docker
+Full guide (tunnel, iPhone install, backups, restore): **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
 ```sh
 docker compose up -d --build     # http://<server>:3000
 ```
